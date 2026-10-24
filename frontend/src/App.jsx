@@ -267,14 +267,7 @@ export default function App() {
   const [activityCost, setActivityCost] = useState('');
   const [activityBusy, setActivityBusy] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [viewMode, setViewMode] = useState(() => {
-    try {
-      const stored = localStorage.getItem('farmpulse_session');
-      return stored ? 'dashboard' : 'landing';
-    } catch {
-      return 'landing';
-    }
-  });
+  const [viewMode, setViewMode] = useState('landing');
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [currentLang, setCurrentLang] = useState(() => localStorage.getItem('farmpulse_lang') || 'en');
 
@@ -818,10 +811,12 @@ export default function App() {
     setError('');
     setNotice('');
     try {
+      const cleanEmail = email.trim().toLowerCase();
+      const cleanPassword = password.trim();
       const endpoint = authMode === 'signup' ? '/api/auth/signup' : '/api/auth/login';
       const result = await api(endpoint, null, {
         method: 'POST',
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: cleanEmail, password: cleanPassword }),
       });
       localStorage.setItem('farmpulse_session', JSON.stringify(result.session));
       setSession(result.session);
