@@ -15,6 +15,7 @@ from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 
 from database import init_db, get_db, row_to_dict, recommendation_to_dict
+from crop_doctor_engine import generate_multilingual_diagnosis, SUPPORTED_LANGUAGES, AGRI_I18N
 
 load_dotenv()
 init_db()
@@ -175,17 +176,17 @@ def get_gemini_key():
     return os.getenv("GEMINI_API_KEY", "").strip() or os.getenv("GOOGLE_API_KEY", "").strip()
 
 
-def call_ai_engine(user_prompt, system_prompt="You are FarmPulse, an expert agricultural advisor and meteorologist.", max_tokens=350, gemini_key=None, json_mode=False):
+def call_ai_engine(user_prompt, system_prompt="You are FarmPulse, an expert agricultural advisor and meteorologist.", max_tokens=350, gemini_key=None, json_mode=False, image_data=None):
     """
     Multi-tier AI Engine:
-    1. Google Gemini API (gemini-1.5-flash / gemini-2.0-flash) if GEMINI_API_KEY is configured
+    1. Google Gemini API (gemini-1.5-flash / gemini-2.0-flash) with multimodal vision support
     2. Local Ollama LLM (e.g. qwen2.5, llama3.2, mistral)
     3. Local Hugging Face Transformers pipeline
     4. Dynamic Agronomic Reasoning Engine
     """
     key = gemini_key or get_gemini_key()
 
-    # Tier 1: Google Gemini API
+    # Tier 1: Google Gemini API (with multimodal photo diagnosis)
     if key and len(key) > 8:
         try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={key}"
@@ -194,10 +195,25 @@ def call_ai_engine(user_prompt, system_prompt="You are FarmPulse, an expert agri
                 instruction += "Output ONLY a valid JSON object without markdown code blocks, backticks, or extra commentary.\n"
             full_prompt = f"{instruction}\nUser Prompt:\n{user_prompt}"
 
+            gemini_parts = [{"text": full_prompt}]
+            if image_data and isinstance(image_data, str) and len(image_data) > 30:
+                mime_type = "image/jpeg"
+                b64_str = image_data
+                if "," in image_data:
+                    hdr, b64_str = image_data.split(",", 1)
+                    if "png" in hdr: mime_type = "image/png"
+                    elif "webp" in hdr: mime_type = "image/webp"
+                gemini_parts.append({
+                    "inline_data": {
+                        "mime_type": mime_type,
+                        "data": b64_str.strip()
+                    }
+                })
+
             payload = {
                 "contents": [
                     {
-                        "parts": [{"text": full_prompt}]
+                        "parts": gemini_parts
                     }
                 ],
                 "generationConfig": {
@@ -1531,7 +1547,7 @@ Provide a concise, practical 2-paragraph agronomic guidance on sowing window, ir
 
 
 @app.post("/api/chat")
-@auth_required
+@optional_auth
 def chat():
     data = request.get_json(silent=True) or {}
     message = str(data.get("message", "")).strip()
@@ -1579,19 +1595,20 @@ def chat():
         if not answer:
             return json_error("The local AI model returned an empty response. Please try again.", 502)
 
-        now_iso = datetime.now(timezone.utc).isoformat()
-        conn = get_db()
-        try:
-            with conn:
-                conn.execute(
-                    """INSERT INTO chat_history (message_id, user_id, farm_id, language, message_type, message_text, response_text, created_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (str(uuid.uuid4()), g.user_id, farm_id or None, language, "text", message, answer, now_iso)
-                )
-        except Exception:
-            app.logger.warning("Could not save chat history", exc_info=True)
-        finally:
-            conn.close()
+        if g.get("user_id"):
+            now_iso = datetime.now(timezone.utc).isoformat()
+            conn = get_db()
+            try:
+                with conn:
+                    conn.execute(
+                        """INSERT INTO chat_history (message_id, user_id, farm_id, language, message_type, message_text, response_text, created_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (str(uuid.uuid4()), g.user_id, farm_id or None, language, "text", message, answer, now_iso)
+                    )
+            except Exception:
+                app.logger.warning("Could not save chat history", exc_info=True)
+            finally:
+                conn.close()
 
         return jsonify({"answer": answer, "model": HF_MODEL_ID, "language": language, "device": _hf_device or "local"})
     except Exception as exc:
@@ -1675,57 +1692,50 @@ def diagnose_disease():
     symptoms = str(data.get("symptoms", "")).strip()
     image_data = data.get("image_data", "")
     farm_id = data.get("farm_id")
-    language = str(data.get("language", "English"))
+    language = str(data.get("language", "English")).strip()
     gemini_key = get_gemini_key()
 
-    prompt = (
-        f"You are an expert plant pathologist and agronomist. Diagnose the following crop problem: "
-        f"Crop: {crop}. "
-        f"Reported Symptoms: {symptoms or 'Visual leaf spots and stress'}. "
-        f"Language for instructions: {language}. "
-        f"Output ONLY a valid JSON object with keys: "
-        f'"disease_name" (common name and botanical pathogen in parentheses), '
-        f'"confidence" (float between 0.85 and 0.98), '
-        f'"stress_factors" (array of 2-3 specific environmental/soil stress factors), '
-        f'"organic_treatment" (specific organic and biological remedies), '
-        f'"chemical_treatment" (specific chemical control if damage exceeds economic threshold), '
-        f'"preventive_measures" (array of 2-3 preventative cultural practices), '
-        f'"advisory_source" (agricultural advisory source).'
-    )
+    # Call expert multilingual engine
+    diag = generate_multilingual_diagnosis(crop, symptoms, language, image_data)
 
-    ai_raw = call_ai_engine(prompt, system_prompt="You are an expert AI crop pathologist. Output ONLY valid JSON.", max_tokens=500, gemini_key=gemini_key, json_mode=True)
-    
-    parsed = None
-    if ai_raw:
+    # If Gemini is configured, allow it to enrich diagnosis with vision
+    if gemini_key and len(gemini_key) > 8:
         try:
-            cleaned = ai_raw.strip()
-            if cleaned.startswith("```"):
-                cleaned = cleaned.split("\n", 1)[1]
-                if cleaned.endswith("```"):
-                    cleaned = cleaned.rsplit("```", 1)[0]
-            parsed = json.loads(cleaned.strip())
-        except Exception:
-            parsed = None
+            prompt = (
+                f"You are an expert plant pathologist. Diagnose this crop problem for a farmer: "
+                f"Crop: {crop}. Symptoms: {symptoms or 'Visual leaf symptoms'}. "
+                f"Respond ENTIRELY in {language}. "
+                f"Output ONLY a valid JSON object with: "
+                f'"disease_name" (localized name in {language}), '
+                f'"confidence" (0.90 to 0.98), '
+                f'"severity" (Critical/Moderate/Low in {language}), '
+                f'"organic_treatment" (organic remedy in {language}), '
+                f'"chemical_treatment" (CIBRC chemical spray & dose in {language}), '
+                f'"preventive_measures" (2-3 cultural practices in {language}).'
+            )
+            ai_raw = call_ai_engine(prompt, system_prompt=f"You are an expert crop pathologist. Respond strictly in {language} as JSON.", max_tokens=500, gemini_key=gemini_key, json_mode=True, image_data=image_data)
+            if ai_raw:
+                cleaned = ai_raw.strip()
+                if cleaned.startswith("```"):
+                    cleaned = cleaned.split("\n", 1)[1]
+                    if cleaned.endswith("```"):
+                        cleaned = cleaned.rsplit("```", 1)[0]
+                parsed = json.loads(cleaned.strip())
+                if parsed.get("disease_name"):
+                    diag["disease_name"] = parsed["disease_name"]
+                if parsed.get("organic_treatment"):
+                    diag["organic_treatment"] = parsed["organic_treatment"]
+                if parsed.get("chemical_treatment"):
+                    diag["chemical_treatment"] = parsed["chemical_treatment"]
+                if parsed.get("preventive_measures") and isinstance(parsed["preventive_measures"], list):
+                    diag["preventive_measures"] = parsed["preventive_measures"]
+                if parsed.get("severity"):
+                    diag["severity"] = parsed["severity"]
+        except Exception as e:
+            app.logger.info("Gemini vision diagnosis fallback to multilingual engine: %s", e)
 
-    if not parsed or not isinstance(parsed, dict) or not parsed.get("disease_name"):
-        parsed = generate_dynamic_disease_diagnosis(crop, symptoms, language)
-
-    diagnosis_id = str(uuid.uuid4())
+    diagnosis_id = diag["diagnosis_id"]
     now_iso = datetime.now(timezone.utc).isoformat()
-
-    result = {
-        "diagnosis_id": diagnosis_id,
-        "crop": crop.title(),
-        "symptoms": symptoms or "Foliar stress & discoloration",
-        "disease_name": parsed.get("disease_name", f"{crop.title()} Leaf Spot & Foliar Blight"),
-        "confidence": float(parsed.get("confidence", 0.92)),
-        "stress_factors": parsed.get("stress_factors", ["Fluctuating relative humidity", "Soil moisture stress"]),
-        "organic_treatment": parsed.get("organic_treatment", "Spray 5ml/L cold-pressed neem oil (1500 ppm) with bio-stimulant."),
-        "chemical_treatment": parsed.get("chemical_treatment", "Apply Mancozeb 75 WP @ 2.5 g/L or Azoxystrobin 23 SC @ 1 ml/L."),
-        "preventive_measures": parsed.get("preventive_measures", ["Crop rotation with non-host crops", "Balanced potassium fertilization"]),
-        "advisory_source": parsed.get("advisory_source", "ICAR - National Research Center for Integrated Pest Management"),
-        "created_at": now_iso
-    }
 
     if g.get("user_id"):
         conn = get_db()
@@ -1737,17 +1747,75 @@ def diagnose_disease():
                                                       organic_treatment, chemical_treatment, preventive_measures, created_at)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (diagnosis_id, g.user_id, farm_id or None, crop.title(), symptoms[:500],
-                     image_data[:100] if image_data else "", result["disease_name"],
-                     result["confidence"], json.dumps(result["stress_factors"]),
-                     result["organic_treatment"], result["chemical_treatment"],
-                     json.dumps(result["preventive_measures"]), now_iso)
+                     image_data[:100] if image_data else "", diag["disease_name"],
+                     diag["confidence"], json.dumps([diag["severity"]]),
+                     diag["organic_treatment"], diag["chemical_treatment"],
+                     json.dumps(diag["preventive_measures"]), now_iso)
                 )
         except Exception:
             app.logger.warning("Could not persist disease diagnosis", exc_info=True)
         finally:
             conn.close()
 
-    return jsonify({"diagnosis": result})
+    return jsonify({"diagnosis": diag})
+
+
+@app.post("/api/crop-doctor/chat")
+@optional_auth
+def crop_doctor_chat():
+    data = request.get_json(silent=True) or {}
+    message = str(data.get("message", "")).strip()
+    image_data = data.get("image_data")
+    crop = str(data.get("crop", "")).strip() or "General Crop"
+    language = str(data.get("language", "English")).strip()
+    gemini_key = get_gemini_key()
+
+    diag = generate_multilingual_diagnosis(crop, message or "leaf symptoms inspection", language, image_data)
+
+    ai_prompt = (
+        f"You are Crop Doctor AI, a compassionate and expert agricultural scientist. "
+        f"The farmer is asking in {language}. "
+        f"Crop: {crop}. Farmer query/Symptoms: {message or 'Analyzing uploaded photo'}. "
+        f"Identified issue: {diag['disease_name']}. "
+        f"Please write a helpful, warm, scientific, and actionable response ENTIRELY in {language}. "
+        f"Explain: "
+        f"1. What is affecting the plant and why. "
+        f"2. Immediate organic/natural remedies (e.g. neem, bio-fungicides). "
+        f"3. Recommended chemical control if damage is severe. "
+        f"4. Prevention tips for the coming weeks. "
+        f"Format with clean markdown bullet points. Encourage and reassure the farmer."
+    )
+
+    ai_reply = call_ai_engine(
+        ai_prompt,
+        system_prompt=f"You are Crop Doctor AI. Reply entirely and naturally in {language}.",
+        max_tokens=550,
+        gemini_key=gemini_key,
+        image_data=image_data
+    )
+
+    reply_text = ai_reply if (ai_reply and len(ai_reply) > 40) else diag["chat_summary"]
+
+    if g.get("user_id"):
+        conn = get_db()
+        try:
+            with conn:
+                conn.execute(
+                    """INSERT INTO chat_history (message_id, user_id, farm_id, language, message_type, message_text, response_text, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (str(uuid.uuid4()), g.user_id, None, language, "crop_doctor", message or "Crop Doctor Image Analysis", reply_text, datetime.now(timezone.utc).isoformat())
+                )
+        except Exception:
+            pass
+        finally:
+            conn.close()
+
+    return jsonify({
+        "reply": reply_text,
+        "diagnosis": diag,
+        "language": language,
+        "crop": crop
+    })
 
 
 @app.get("/api/diagnoses")

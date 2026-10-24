@@ -51,19 +51,22 @@ import {
   AlertOctagon,
   Clock,
   FlaskConical,
+  Languages,
 } from 'lucide-react';
 
+import LandingPage from './LandingPage';
+import CropDoctorChat from './CropDoctorChat';
+import LandingWeather from './LandingWeather';
+import { languages, translations } from './i18n';
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 
 async function api(path, token, options = {}) {
-  const geminiKey = localStorage.getItem('farmpulse_gemini_key') || '';
   const response = await fetch(`${apiBase}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(geminiKey ? { 'X-Gemini-Key': geminiKey } : {}),
       ...(options.headers || {}),
     },
   });
@@ -263,50 +266,36 @@ export default function App() {
   const [activityNotes, setActivityNotes] = useState('');
   const [activityCost, setActivityCost] = useState('');
   const [activityBusy, setActivityBusy] = useState(false);
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [geminiKey, setGeminiKey] = useState(() => localStorage.getItem('farmpulse_gemini_key') || '');
-  const [showGeminiModal, setShowGeminiModal] = useState(false);
-  const [geminiInput, setGeminiInput] = useState('');
-  const [geminiTesting, setGeminiTesting] = useState(false);
-  const [geminiStatus, setGeminiStatus] = useState(null);
-
-  const handleSaveGeminiKey = async (keyToSave) => {
-    setGeminiTesting(true);
-    setError('');
+  const [viewMode, setViewMode] = useState(() => {
     try {
-      const trimmed = (keyToSave || '').trim();
-      const res = await api('/api/settings/gemini-key', token, {
-        method: 'POST',
-        body: JSON.stringify({ gemini_api_key: trimmed }),
-      });
-      if (res.gemini_active) {
-        localStorage.setItem('farmpulse_gemini_key', trimmed);
-        setGeminiKey(trimmed);
-        setGeminiStatus({ active: true, model: res.model, message: 'Google Gemini 1.5 Flash Connected & Verified!' });
-        setNotice('✨ Gemini 1.5 Flash connected & verified successfully!');
-        setShowGeminiModal(false);
-      } else {
-        localStorage.removeItem('farmpulse_gemini_key');
-        setGeminiKey('');
-        setGeminiStatus({ active: false, message: 'Key cleared. Switched to Local LLM / Dynamic Reasoning.' });
-        setNotice('Gemini key cleared. Now using Local LLM / Dynamic Agro-Reasoning.');
-        setShowGeminiModal(false);
-      }
-    } catch (e) {
-      setError(`Gemini Key error: ${e.message}`);
-    } finally {
-      setGeminiTesting(false);
+      const stored = localStorage.getItem('farmpulse_session');
+      return stored ? 'dashboard' : 'landing';
+    } catch {
+      return 'landing';
+    }
+  });
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [currentLang, setCurrentLang] = useState(() => localStorage.getItem('farmpulse_lang') || 'en');
+
+  const currentLangObj = useMemo(
+    () => languages.find((l) => l.code === currentLang) || languages[0],
+    [currentLang]
+  );
+
+  const t = useCallback(
+    (key) => translations[currentLang]?.[key] || translations.en[key] || key,
+    [currentLang]
+  );
+
+  const handleSelectLang = (newCode) => {
+    setCurrentLang(newCode);
+    localStorage.setItem('farmpulse_lang', newCode);
+    const langObj = languages.find((l) => l.code === newCode);
+    if (langObj) {
+      setLanguage(langObj.label);
+      handleLanguageChange(langObj.label);
     }
   };
-
-  useEffect(() => {
-    const saved = localStorage.getItem('farmpulse_gemini_key');
-    if (saved) {
-      api('/api/settings/ai-status', null, { headers: { 'X-Gemini-Key': saved } })
-        .then(setGeminiStatus)
-        .catch(() => {});
-    }
-  }, []);
 
   const token = session?.access_token;
   const selectedFarm = useMemo(() => farms.find((f) => f.farm_id === selectedFarmId), [farms, selectedFarmId]);
@@ -332,6 +321,7 @@ export default function App() {
   const logout = useCallback(() => {
     localStorage.removeItem('farmpulse_session');
     setSession(null);
+    setViewMode('landing');
     setFarms([]);
     setSelectedFarmId('');
     setRecommendation(null);
@@ -822,7 +812,7 @@ export default function App() {
   }, [session, weather, farms.length, detectLiveLocation]);
 
   async function handleAuth(event) {
-    event.preventDefault();
+    if (event?.preventDefault) event.preventDefault();
     setAuthBusy(true);
     setError('');
     setNotice('');
@@ -834,6 +824,8 @@ export default function App() {
       });
       localStorage.setItem('farmpulse_session', JSON.stringify(result.session));
       setSession(result.session);
+      setShowAuthModal(false);
+      setViewMode('dashboard');
       setNotice(authMode === 'signup' ? 'Account created! Welcome to FarmPulse.' : 'Signed in successfully.');
     } catch (e) {
       setError(e.message || 'Authentication failed.');
@@ -937,92 +929,94 @@ export default function App() {
     );
   }
 
-  if (!session) {
+  if (viewMode === 'landing' || !session) {
     return (
-      <div className="auth-layout">
-        <div className="auth-visual">
-          <Brand light />
-          <div className="auth-hero">
-            <span className="eyebrow light-eyebrow">SMART AGRICULTURE PLATFORM</span>
-            <h1>Real-time weather insights & tailored crop decisions.</h1>
-            <p>
-              Connect your field location dynamically via Open-Meteo weather API to receive hyper-local crop
-              suitability, 7-day outlooks, and AI-powered agricultural predictions without static data.
-            </p>
-            <div className="auth-points">
-              <span>
-                <Navigation size={15} /> Dynamic GPS & Location Search
-              </span>
-              <span>
-                <CloudSun size={15} /> Real-Time Open-Meteo Weather
-              </span>
-              <span>
-                <Sparkles size={15} /> Generative AI & Meteorological Agronomy
-              </span>
-            </div>
-          </div>
-          <div className="auth-foot">FarmPulse Smart Agriculture · Dynamic Meteorological Telemetry & Agro-AI</div>
-        </div>
+      <>
+        <LandingPage
+          currentLang={currentLang}
+          onSelectLang={handleSelectLang}
+          t={t}
+          session={session}
+          onOpenAuth={() => {
+            setError('');
+            setNotice('');
+            setShowAuthModal(true);
+          }}
+          onGoToDashboard={() => setViewMode('dashboard')}
+          onLogout={logout}
+        />
 
-        <div className="auth-panel">
-          <form className="auth-form" onSubmit={handleAuth}>
-            <Brand />
-            <h2>{authMode === 'signup' ? 'Create farmer account' : 'Welcome back'}</h2>
-            <p className="muted">
-              {authMode === 'signup'
-                ? 'Sign up to monitor your fields with live meteorological data & agro-AI.'
-                : 'Sign in to access your farm profiles and weather insights.'}
-            </p>
-
-            {error && <Notice type="error" text={error} onClose={() => setError('')} />}
-            {notice && <Notice text={notice} onClose={() => setNotice('')} />}
-
-            <label>
-              Email address
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="farmer@example.com"
-                autoComplete="email"
-              />
-            </label>
-
-            <label>
-              Password
-              <input
-                type="password"
-                required
-                minLength={6}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="At least 6 characters"
-                autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'}
-              />
-            </label>
-
-            <button className="button primary full" type="submit" disabled={authBusy}>
-              {authBusy ? 'Please wait…' : authMode === 'signup' ? 'Create account' : 'Sign in'}
-            </button>
-
-            <div className="switch-auth">
-              {authMode === 'signup' ? 'Already have an account?' : "Don't have an account?"}{' '}
+        {showAuthModal && (
+          <div className="auth-modal-backdrop" onClick={() => setShowAuthModal(false)}>
+            <div className="auth-modal-card" onClick={(e) => e.stopPropagation()}>
               <button
                 type="button"
-                className="link-button"
-                onClick={() => {
-                  setAuthMode(authMode === 'signup' ? 'login' : 'signup');
-                  setError('');
-                  setNotice('');
-                }}
+                className="auth-modal-close"
+                onClick={() => setShowAuthModal(false)}
+                title="Close"
               >
-                {authMode === 'signup' ? 'Sign in' : 'Create one'}
+                ×
               </button>
+              <form className="auth-form" onSubmit={handleAuth}>
+                <Brand />
+                <h2>{authMode === 'signup' ? (t('createAccount') || 'Create Farmer Account') : (t('loginTitle') || 'Farmer Sign In')}</h2>
+                <p className="muted">
+                  {authMode === 'signup'
+                    ? (t('loginSubtitle') || 'Sign up to monitor your fields with live meteorological data & agro-AI.')
+                    : (t('loginSubtitle') || 'Sign in to access your farm profiles and weather insights.')}
+                </p>
+
+                {error && <Notice type="error" text={error} onClose={() => setError('')} />}
+                {notice && <Notice text={notice} onClose={() => setNotice('')} />}
+
+                <label>
+                  {t('emailLabel') || 'Email address'}
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="farmer@example.com"
+                    autoComplete="email"
+                  />
+                </label>
+
+                <label>
+                  {t('passwordLabel') || 'Password'}
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="At least 6 characters"
+                    autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'}
+                  />
+                </label>
+
+                <button className="button primary full" type="submit" disabled={authBusy}>
+                  {authBusy ? 'Please wait…' : authMode === 'signup' ? (t('submitSignup') || 'Create Account') : (t('submitLogin') || 'Sign In')}
+                </button>
+
+                <div className="switch-auth">
+                  {authMode === 'signup' ? (t('alreadyHaveAccount') || 'Already have an account?') : (t('newFarmer') || "New to CropGuard?")}{' '}
+                  <button
+                    type="button"
+                    className="link-button"
+                    onClick={() => {
+                      setAuthMode(authMode === 'signup' ? 'login' : 'signup');
+                      setError('');
+                      setNotice('');
+                    }}
+                  >
+                    {authMode === 'signup' ? 'Sign in' : 'Create one'}
+                  </button>
+                </div>
+              </form>
             </div>
-          </form>
-        </div>
-      </div>
+          </div>
+        )}
+      </>
     );
   }
 
@@ -1119,7 +1113,7 @@ export default function App() {
             <Cpu size={16} className="heading-muted" />
             <div>
               <strong>AI Reasoning Engine</strong>
-              <small>{geminiKey ? 'Google Gemini 1.5 Flash' : (health?.ai_model ? `${health.ai_model.split('/')[1] || health.ai_model}` : 'Local LLM / Agro-AI')}</small>
+              <small>{health?.gemini_active ? 'Google Gemini 1.5 Flash' : (health?.ai_model ? `${health.ai_model.split('/')[1] || health.ai_model}` : 'Local LLM / Agro-AI')}</small>
             </div>
           </div>
           <div className="connection">
@@ -1156,18 +1150,35 @@ export default function App() {
             </h1>
           </div>
           <div className="topbar-actions">
-            {/* Gemini AI Status / Config Button */}
+            {/* Public Landing Page Button */}
             <button
-              className={`gemini-pill-btn ${geminiKey ? 'active' : ''}`}
-              onClick={() => {
-                setGeminiInput(geminiKey);
-                setShowGeminiModal(true);
-              }}
-              title={geminiKey ? 'Google Gemini 1.5 Flash Connected & Active' : 'Connect Gemini API Key'}
+              type="button"
+              className="button secondary"
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '6px 12px' }}
+              onClick={() => setViewMode('landing')}
+              title="Return to public Landing Page"
             >
-              <Sparkles size={13} style={{ color: geminiKey ? '#8b5cf6' : '#ea580c' }} />
-              {geminiKey ? 'Gemini AI Active' : '⚙️ Connect Gemini AI'}
+              <Sprout size={14} style={{ color: '#2b7d4a' }} />
+              <span>Public Landing Page</span>
             </button>
+
+            {/* Language Selector Dropdown in topbar */}
+            <div className="lang-picker-box" style={{ padding: '4px 10px' }}>
+              <Languages size={14} style={{ color: '#2b7d4a' }} />
+              <select
+                value={currentLang}
+                onChange={(e) => handleSelectLang(e.target.value)}
+                className="lang-select-native"
+                style={{ fontSize: '11.5px' }}
+                title="Select language"
+              >
+                {languages.map((l) => (
+                  <option key={l.code} value={l.code}>
+                    {l.native} ({l.label})
+                  </option>
+                ))}
+              </select>
+            </div>
 
             {/* Offline / Online Sync Status Pill */}
             <span className={`offline-pill ${!isOnline ? 'offline' : ''}`} title={isOnline ? 'Connected to live network' : 'Using cached offline data'}>
@@ -2016,178 +2027,24 @@ export default function App() {
         {/* ------------------------------------------------------------- */}
         {/* PAGE: CROP DOCTOR - DISEASE & STRESS DIAGNOSIS */}
         {/* ------------------------------------------------------------- */}
+        {/* ------------------------------------------------------------- */}
+        {/* PAGE: CROP DOCTOR - CHATGPT AI DISEASE & PEST PATHOLOGIST */}
+        {/* ------------------------------------------------------------- */}
         {activeTab === 'disease' && (
           <div className="page-container">
-            <div className="page-header-row">
+            <div className="page-header-row" style={{ marginBottom: '18px' }}>
               <div>
-                <h2>Crop Doctor: Disease Detection & Stress Diagnostics</h2>
-                <p>Upload a field leaf photo or select observed symptoms for immediate pathology and stress analysis.</p>
+                <h2>Crop Doctor: ChatGPT AI Disease & Pest Pathologist</h2>
+                <p>Chat with our AI plant pathologist, upload/capture leaf or fruit photos, inspect symptom reference photos, and watch curated YouTube video guides in your language.</p>
               </div>
             </div>
 
-            <div className="doctor-layout">
-              {/* Left Column: Photo Upload and Symptom Selection */}
-              <div className="fert-form-panel">
-                <form onSubmit={handleDiseaseDiagnose}>
-                  <label>
-                    Target Crop
-                    <select value={diagnosisCrop} onChange={(e) => setDiagnosisCrop(e.target.value)}>
-                      <option>Paddy</option>
-                      <option>Cotton</option>
-                      <option>Groundnut</option>
-                      <option>Maize</option>
-                      <option>Red Gram</option>
-                      <option>Chilli</option>
-                      <option>Tomato</option>
-                      <option>Soybean</option>
-                    </select>
-                  </label>
-
-                  <div style={{ margin: '14px 0 6px' }}>
-                    <span style={{ fontSize: '12px', fontWeight: '700', color: '#304437' }}>Upload Leaf or Field Photo:</span>
-                    <label className="photo-upload-zone" style={{ display: 'block', marginTop: '6px' }}>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            const reader = new FileReader();
-                            reader.onload = (event) => {
-                              setImagePreview(event.target.result);
-                              setDiagnosisImage(event.target.result);
-                            };
-                            reader.readAsDataURL(file);
-                          }
-                        }}
-                      />
-                      {imagePreview ? (
-                        <div>
-                          <img src={imagePreview} alt="Leaf Preview" className="preview-leaf-img" />
-                          <p style={{ fontSize: '11px', color: '#2b7d4a', margin: '4px 0 0' }}>Photo Loaded. Click to change.</p>
-                        </div>
-                      ) : (
-                        <div>
-                          <UploadCloud size={32} style={{ color: '#387c53', margin: '0 auto 8px' }} />
-                          <strong style={{ display: 'block', fontSize: '13px', color: '#1a3a24' }}>
-                            Click to upload leaf photo or drag & drop
-                          </strong>
-                          <span style={{ fontSize: '11px', color: '#688070' }}>Supports JPG, PNG, WEBP from mobile camera or storage</span>
-                        </div>
-                      )}
-                    </label>
-                  </div>
-
-                  <div style={{ marginTop: '14px' }}>
-                    <span style={{ fontSize: '12px', fontWeight: '700', color: '#304437' }}>Visual Field Symptoms Observed:</span>
-                    <div className="symptoms-checkbox-grid">
-                      {[
-                        'Yellowing of leaves / Chlorosis',
-                        'Brown or black circular leaf spots',
-                        'Wilting / Drooping plant',
-                        'Powdery white or grey coating',
-                        'Red / orange rust pustules',
-                        'Stunted growth / Curled leaves',
-                      ].map((sym) => (
-                        <label key={sym} className="symptom-check-item">
-                          <input
-                            type="checkbox"
-                            checked={selectedSymptoms.includes(sym)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedSymptoms([...selectedSymptoms, sym]);
-                              } else {
-                                setSelectedSymptoms(selectedSymptoms.filter((s) => s !== sym));
-                              }
-                            }}
-                          />
-                          <span>{sym}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  <label style={{ marginTop: '10px' }}>
-                    Additional Observations (optional)
-                    <input
-                      value={diagnosisSymptoms}
-                      onChange={(e) => setDiagnosisSymptoms(e.target.value)}
-                      placeholder="e.g. Stem discoloration, pests visible on leaf underside..."
-                    />
-                  </label>
-
-                  <button className="button primary full" type="submit" disabled={diagnosingBusy} style={{ marginTop: '14px' }}>
-                    <Bug size={16} />
-                    {diagnosingBusy ? 'Analyzing Pathology & Stress...' : 'Diagnose Disease & Stress'}
-                  </button>
-                </form>
-              </div>
-
-              {/* Right Column: Diagnosis Result or Prompt */}
-              <div>
-                {diagnosisResult ? (
-                  <div className="diagnosis-result-card">
-                    <div className="diagnosis-header">
-                      <div>
-                        <span className="small-label" style={{ color: '#8e5812' }}>PATHOLOGY REPORT · ICAR ADVISORY</span>
-                        <h3 style={{ margin: '4px 0 2px', fontSize: '20px', color: '#163821' }}>
-                          {diagnosisResult.disease_name}
-                        </h3>
-                        <p style={{ margin: 0, fontSize: '11.5px', color: '#688070' }}>
-                          Target Crop: <strong>{diagnosisResult.crop}</strong> · Pathogen: <strong>{diagnosisResult.pathogen}</strong>
-                        </p>
-                      </div>
-                      <span className="confidence-badge">
-                        {Math.round((diagnosisResult.confidence || 0.92) * 100)}% Match
-                      </span>
-                    </div>
-
-                    {/* Stress Factors */}
-                    {diagnosisResult.stress_factors && (
-                      <div style={{ background: '#fdf9f2', border: '1px solid #fae6c6', borderRadius: '8px', padding: '10px 12px', marginBottom: '14px' }}>
-                        <strong style={{ fontSize: '11px', color: '#8e5812', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                          <AlertTriangle size={13} /> Crop Stress Analysis:
-                        </strong>
-                        <p style={{ fontSize: '11.5px', color: '#6b430a', margin: '4px 0 0', lineHeight: '1.45' }}>
-                          {diagnosisResult.stress_factors}
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Organic Treatment */}
-                    <div className="treatment-box">
-                      <strong>🌿 Recommended Organic & Biological Treatment:</strong>
-                      <p>{diagnosisResult.organic_treatment}</p>
-                    </div>
-
-                    {/* Chemical Control */}
-                    <div className="treatment-box chemical">
-                      <strong>🧪 Chemical / Fungicidal Control (If Threshold Exceeded):</strong>
-                      <p>{diagnosisResult.chemical_treatment}</p>
-                    </div>
-
-                    {/* Prevention Tips */}
-                    {diagnosisResult.prevention && (
-                      <div style={{ marginTop: '12px', fontSize: '11.5px', color: '#384d3e' }}>
-                        <strong>🛡️ Long-term Field Prevention:</strong>
-                        <p style={{ margin: '4px 0 0', lineHeight: '1.5' }}>{diagnosisResult.prevention}</p>
-                      </div>
-                    )}
-
-                    <div style={{ borderTop: '1px solid #edf4ea', paddingTop: '10px', marginTop: '14px', fontSize: '10.5px', color: '#6c8574', display: 'flex', justifyContent: 'space-between' }}>
-                      <span>Advisory Source: {diagnosisResult.advisory_source}</span>
-                      <span>Verified: {new Date(diagnosisResult.created_at || Date.now()).toLocaleDateString()}</span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="panel empty-state">
-                    <Bug size={38} style={{ color: '#2b7d4a', margin: '0 auto 12px' }} />
-                    <h3>No Diagnosis Run Yet</h3>
-                    <p>Upload a clear photo of the infected leaf or tick the symptoms on the left to get instant biological & chemical remedies.</p>
-                  </div>
-                )}
-              </div>
-            </div>
+            <CropDoctorChat
+              language={currentLang}
+              languageLabel={currentLangObj.label}
+              t={t}
+              token={token}
+            />
 
             {/* Past Diagnoses History */}
             {diagnosesHistory.length > 0 && (
@@ -3208,88 +3065,9 @@ export default function App() {
 
         {/* FOOTER */}
         <footer className="page-footer">
-          <span>FarmPulse Smart Agriculture</span>
+          <span>CropGuard Smart Agriculture</span>
           <span>Dynamic meteorological telemetry powered by Open-Meteo & Intelligent Agro-AI Engine.</span>
         </footer>
-
-        {/* GEMINI API CONFIGURATION MODAL */}
-        {showGeminiModal && (
-          <div className="gemini-modal-backdrop" onClick={() => setShowGeminiModal(false)}>
-            <div className="gemini-modal" onClick={(e) => e.stopPropagation()}>
-              <div className="gemini-modal-header">
-                <div>
-                  <h3>
-                    <Sparkles size={20} style={{ color: '#8b5cf6' }} /> Google Gemini 1.5 Flash AI
-                  </h3>
-                  <p>
-                    Connect your Gemini API Key to enable cloud generative intelligence for hyper-accurate crop recommendations, disease pathology, and weather forecasting.
-                  </p>
-                </div>
-                <button className="gemini-modal-close" onClick={() => setShowGeminiModal(false)}>×</button>
-              </div>
-
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ fontSize: '12px', fontWeight: '700', color: '#1e293b', display: 'block', marginBottom: '6px' }}>
-                  Gemini API Key:
-                </label>
-                <input
-                  type="password"
-                  value={geminiInput}
-                  onChange={(e) => setGeminiInput(e.target.value)}
-                  placeholder="AIzaSy... (Paste your key here)"
-                  style={{
-                    width: '100%',
-                    padding: '10px 14px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    fontSize: '13px',
-                    fontFamily: 'monospace'
-                  }}
-                />
-                <span style={{ fontSize: '11px', color: '#64748b', display: 'block', marginTop: '6px' }}>
-                  Don't have a key? Get one for free in 30 seconds at <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" style={{ color: '#7c3aed', fontWeight: 600, textDecoration: 'underline' }}>Google AI Studio</a>.
-                </span>
-              </div>
-
-              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '20px', fontSize: '11.5px', color: '#475569' }}>
-                <strong>Multi-Tier AI Architecture:</strong> If no Gemini key is provided, FarmPulse automatically falls back to your local LLM (Ollama / Hugging Face) or intelligent dynamic agronomic algorithms.
-              </div>
-
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                {geminiKey && (
-                  <button
-                    type="button"
-                    className="button"
-                    style={{ color: '#dc2626', borderColor: '#fca5a5' }}
-                    onClick={() => {
-                      setGeminiInput('');
-                      handleSaveGeminiKey('');
-                    }}
-                  >
-                    Clear Key (Use Local LLM)
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="button secondary"
-                  onClick={() => setShowGeminiModal(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="button primary"
-                  disabled={geminiTesting || !geminiInput.trim()}
-                  onClick={() => handleSaveGeminiKey(geminiInput)}
-                  style={{ background: '#7c3aed', borderColor: '#6d28d9' }}
-                >
-                  <Sparkles size={14} />
-                  {geminiTesting ? 'Verifying Key...' : 'Save & Verify Key'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </main>
     </div>
   );
