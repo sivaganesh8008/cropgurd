@@ -266,6 +266,7 @@ export default function App() {
   const [activityNotes, setActivityNotes] = useState('');
   const [activityCost, setActivityCost] = useState('');
   const [activityBusy, setActivityBusy] = useState(false);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [viewMode, setViewMode] = useState(() => {
     try {
       const stored = localStorage.getItem('farmpulse_session');
@@ -828,7 +829,12 @@ export default function App() {
       setViewMode('dashboard');
       setNotice(authMode === 'signup' ? 'Account created! Welcome to FarmPulse.' : 'Signed in successfully.');
     } catch (e) {
-      setError(e.message || 'Authentication failed.');
+      const msg = e.message || 'Authentication failed.';
+      if (msg.includes('Invalid email or password')) {
+        setError('Invalid credentials. Use test account (farmer@example.com / password123) or click "Create one" below to register.');
+      } else {
+        setError(msg);
+      }
     } finally {
       setAuthBusy(false);
     }
@@ -940,6 +946,10 @@ export default function App() {
           onOpenAuth={() => {
             setError('');
             setNotice('');
+            if (!email) {
+              setEmail('farmer@example.com');
+              setPassword('password123');
+            }
             setShowAuthModal(true);
           }}
           onGoToDashboard={() => setViewMode('dashboard')}
@@ -965,6 +975,31 @@ export default function App() {
                     ? (t('loginSubtitle') || 'Sign up to monitor your fields with live meteorological data & agro-AI.')
                     : (t('loginSubtitle') || 'Sign in to access your farm profiles and weather insights.')}
                 </p>
+
+                {/* Demo Credentials Quick-Fill Card */}
+                <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '10px 14px', marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                  <div>
+                    <strong style={{ fontSize: '11px', color: '#166534', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block' }}>
+                      🌱 Verified Test Account:
+                    </strong>
+                    <div style={{ fontSize: '12px', color: '#15803d', fontFamily: 'monospace', marginTop: '2px' }}>
+                      farmer@example.com / password123
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="button secondary"
+                    style={{ fontSize: '11px', padding: '4px 10px', background: '#fff', borderColor: '#86efac', color: '#166534', fontWeight: 700, whiteSpace: 'nowrap' }}
+                    onClick={() => {
+                      setEmail('farmer@example.com');
+                      setPassword('password123');
+                      setAuthMode('login');
+                      setError('');
+                    }}
+                  >
+                    Auto-Fill
+                  </button>
+                </div>
 
                 {error && <Notice type="error" text={error} onClose={() => setError('')} />}
                 {notice && <Notice text={notice} onClose={() => setNotice('')} />}
