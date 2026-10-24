@@ -86,12 +86,58 @@ def init_db():
             created_at TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS activities (
+            activity_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            farm_id TEXT REFERENCES farms(farm_id) ON DELETE CASCADE,
+            activity_type TEXT NOT NULL,
+            crop TEXT NOT NULL DEFAULT '',
+            activity_date TEXT NOT NULL,
+            notes TEXT DEFAULT '',
+            cost REAL DEFAULT 0.0,
+            status TEXT NOT NULL DEFAULT 'completed',
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS alerts (
+            alert_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            farm_id TEXT REFERENCES farms(farm_id) ON DELETE CASCADE,
+            alert_type TEXT NOT NULL DEFAULT 'weather',
+            title TEXT NOT NULL,
+            message TEXT NOT NULL,
+            severity TEXT NOT NULL DEFAULT 'medium',
+            scheduled_at TEXT,
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS disease_diagnoses (
+            diagnosis_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            farm_id TEXT REFERENCES farms(farm_id) ON DELETE SET NULL,
+            crop TEXT NOT NULL,
+            symptoms TEXT NOT NULL,
+            image_path TEXT DEFAULT '',
+            disease_name TEXT NOT NULL,
+            confidence REAL DEFAULT 0.92,
+            stress_factors TEXT DEFAULT '[]',
+            organic_treatment TEXT DEFAULT '',
+            chemical_treatment TEXT DEFAULT '',
+            preventive_measures TEXT DEFAULT '[]',
+            created_at TEXT NOT NULL
+        );
+
         CREATE INDEX IF NOT EXISTS idx_farms_user ON farms(user_id);
         CREATE INDEX IF NOT EXISTS idx_recommendations_user ON recommendations(user_id, created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_chat_user ON chat_history(user_id, created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_analyses_user ON weather_analyses(user_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_activities_user ON activities(user_id, activity_date DESC);
+        CREATE INDEX IF NOT EXISTS idx_alerts_user ON alerts(user_id, status);
+        CREATE INDEX IF NOT EXISTS idx_diagnoses_user ON disease_diagnoses(user_id, created_at DESC);
         """)
     conn.close()
+
 
 
 def row_to_dict(row):

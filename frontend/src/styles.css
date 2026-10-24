@@ -738,6 +738,228 @@ p{line-height:1.55}
 .farm-meta-cell strong { font-size: 11px; color: #324738; }
 .farm-card-actions { display: flex; gap: 8px; justify-content: flex-end; padding-top: 10px; border-top: 1px solid #f0f4ee; }
 
+/* Voice Assistant TTS / STT Controls */
+.voice-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: #f0f7ef;
+  border: 1px solid #c9e0c7;
+  color: #236744;
+  border-radius: 9px;
+  padding: 8px 12px;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.voice-btn:hover { background: #e0f2de; border-color: #236744; }
+.voice-btn.recording {
+  background: #ffebe8;
+  border-color: #fca59b;
+  color: #d32f2f;
+  animation: pulse-mic 1.2s infinite;
+}
+@keyframes pulse-mic {
+  0% { box-shadow: 0 0 0 0 rgba(211, 47, 47, 0.4); }
+  70% { box-shadow: 0 0 0 8px rgba(211, 47, 47, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(211, 47, 47, 0); }
+}
+.audio-tts-btn {
+  background: #ffffff;
+  border: 1px solid #d8e4d5;
+  color: #2e603d;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  margin-top: 6px;
+  transition: all 0.15s ease;
+}
+.audio-tts-btn:hover { background: #eef7ed; border-color: #267341; }
+
+/* Crop Doctor & Disease Scanner */
+.doctor-layout { display: grid; grid-template-columns: 1fr 1.2fr; gap: 20px; margin-top: 14px; }
+.photo-upload-zone {
+  border: 2px dashed #b8d2b5;
+  border-radius: 14px;
+  background: #f7faf5;
+  padding: 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+.photo-upload-zone:hover { border-color: #236744; background: #eef7ed; }
+.photo-upload-zone input { display: none; }
+.preview-leaf-img {
+  max-width: 100%;
+  max-height: 220px;
+  border-radius: 10px;
+  object-fit: cover;
+  margin: 10px 0;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+}
+.symptoms-checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin: 12px 0;
+}
+.symptom-check-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #e1ebe0;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.symptom-check-item input { width: auto; margin: 0; }
+.diagnosis-result-card {
+  background: #ffffff;
+  border: 1px solid #cee0cc;
+  border-radius: 14px;
+  padding: 22px;
+  box-shadow: 0 8px 24px rgba(34,60,40,.06);
+}
+.diagnosis-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+  border-bottom: 1px solid #edf4ea;
+  padding-bottom: 12px;
+}
+.confidence-badge {
+  font-size: 11px;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 99px;
+  background: #e6f7e8;
+  color: #1e7039;
+  border: 1px solid #bde6c2;
+}
+.treatment-box {
+  background: #f8faf6;
+  border-radius: 10px;
+  padding: 14px;
+  border-left: 4px solid #236744;
+  margin: 12px 0;
+}
+.treatment-box.chemical { border-left-color: #c97a22; background: #fdf9f4; }
+.treatment-box strong { font-size: 12px; display: block; margin-bottom: 4px; color: var(--ink); }
+.treatment-box p { font-size: 11.5px; line-height: 1.55; margin: 0; color: #435b4c; }
+
+/* Mandi Market Rates */
+.market-rates-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 14px; }
+.market-card {
+  background: #fff;
+  border: 1px solid #e5ece3;
+  border-radius: 12px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 175px;
+  box-shadow: 0 4px 14px rgba(34,60,40,.04);
+}
+.market-card-head { display: flex; justify-content: space-between; align-items: flex-start; }
+.market-price-big { font: 800 24px Manrope, sans-serif; color: #173b24; margin: 8px 0 2px; }
+.trend-pill { font-size: 9.5px; font-weight: 800; padding: 3px 8px; border-radius: 99px; display: inline-flex; align-items: center; gap: 4px; }
+.trend-pill.rising { background: #eaf8ec; color: #1e753b; }
+.trend-pill.stable { background: #f0f4ee; color: #506857; }
+.trend-pill.falling { background: #fdf0ee; color: #b83324; }
+
+/* Fertilizer Calculator */
+.fertilizer-calc-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 16px; }
+.fert-form-panel { background: #fff; border: 1px solid #e5ece3; border-radius: 14px; padding: 22px; }
+.fert-plan-card { background: #fff; border: 1px solid #d4e7d2; border-radius: 14px; padding: 22px; box-shadow: 0 6px 20px rgba(34,60,40,.05); }
+.npk-badges-row { display: flex; gap: 10px; margin: 14px 0; }
+.npk-badge {
+  flex: 1;
+  text-align: center;
+  padding: 12px 8px;
+  border-radius: 10px;
+  background: #f3f8f2;
+  border: 1px solid #dbead9;
+}
+.npk-badge small { display: block; font-size: 9.5px; font-weight: 700; color: #627c69; text-transform: uppercase; }
+.npk-badge strong { font-size: 18px; color: #1b4d2c; font-family: Manrope, sans-serif; }
+
+/* Seed Varieties Grid */
+.seed-varieties-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 16px; }
+.seed-card {
+  background: #fff;
+  border: 1px solid #e5ece3;
+  border-radius: 14px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 240px;
+  box-shadow: 0 4px 16px rgba(34,60,40,.04);
+}
+.seed-badge { font-size: 9.5px; font-weight: 800; background: #e6f4e8; color: #236744; padding: 3px 8px; border-radius: 6px; }
+
+/* Farm Activities Table & Tracker */
+.activity-tracker-layout { display: grid; grid-template-columns: 340px 1fr; gap: 18px; margin-top: 16px; }
+.activity-form-card { background: #fff; border: 1px solid #e5ece3; border-radius: 14px; padding: 20px; }
+.activity-list-card { background: #fff; border: 1px solid #e5ece3; border-radius: 14px; padding: 20px; }
+.activity-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid #edf2ec;
+  font-size: 12px;
+}
+.activity-row:last-child { border-bottom: none; }
+.act-badge { font-size: 9.5px; font-weight: 800; padding: 3px 8px; border-radius: 6px; background: #eef6ed; color: #236744; }
+
+/* Alerts and Reminders Banner */
+.alerts-hub-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.alert-pill-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  border-radius: 12px;
+  font-size: 12px;
+  line-height: 1.45;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+}
+.alert-pill-box.high { background: #fdf0ed; border: 1px solid #fac8be; color: #a42c1b; }
+.alert-pill-box.medium { background: #fdf6ea; border: 1px solid #fae1b4; color: #8e5812; }
+.alert-pill-box.info { background: #edf6f9; border: 1px solid #cae4ed; color: #1c6278; }
+
+/* Offline Status Pill */
+.offline-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 99px;
+  background: #f5f8f4;
+  border: 1px solid #dfe7dd;
+  color: #3b5744;
+}
+.offline-pill.offline { background: #fff2ed; border-color: #f7cebe; color: #b33918; }
+
 @media(max-width:1200px) {
   .dashboard-grid { grid-template-columns: repeat(2, 1fr); }
   .advisories-grid { grid-template-columns: repeat(2, 1fr); }
@@ -745,6 +967,11 @@ p{line-height:1.55}
   .farms-grid { grid-template-columns: repeat(2, 1fr); }
   .chat-page-layout { grid-template-columns: 1fr; }
   .chat-context-panel { display: none; }
+  .doctor-layout { grid-template-columns: 1fr; }
+  .market-rates-grid { grid-template-columns: repeat(2, 1fr); }
+  .seed-varieties-grid { grid-template-columns: repeat(2, 1fr); }
+  .fertilizer-calc-layout { grid-template-columns: 1fr; }
+  .activity-tracker-layout { grid-template-columns: 1fr; }
 }
 
 @media(max-width:850px) {
@@ -753,4 +980,7 @@ p{line-height:1.55}
   .forecast-card-grid { grid-template-columns: repeat(2, 1fr); }
   .history-card-grid { grid-template-columns: 1fr; }
   .farms-grid { grid-template-columns: 1fr; }
+  .market-rates-grid { grid-template-columns: 1fr; }
+  .seed-varieties-grid { grid-template-columns: 1fr; }
 }
+

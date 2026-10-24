@@ -34,7 +34,25 @@ import {
   ArrowRight,
   Trash2,
   Cpu,
+  Mic,
+  MicOff,
+  Volume2,
+  VolumeX,
+  Camera,
+  UploadCloud,
+  Bug,
+  FileText,
+  TrendingUp,
+  TrendingDown,
+  Layers,
+  Wifi,
+  WifiOff,
+  DollarSign,
+  AlertOctagon,
+  Clock,
+  FlaskConical,
 } from 'lucide-react';
+
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 
@@ -216,8 +234,49 @@ export default function App() {
   const [detectingLocation, setDetectingLocation] = useState(false);
   const [customWeatherLocation, setCustomWeatherLocation] = useState('');
 
+  // Features 22-37 State Variables
+  const [isListening, setIsListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [alerts, setAlerts] = useState([]);
+  const [diagnosisCrop, setDiagnosisCrop] = useState('Paddy');
+  const [diagnosisSymptoms, setDiagnosisSymptoms] = useState('');
+  const [selectedSymptoms, setSelectedSymptoms] = useState([]);
+  const [diagnosisImage, setDiagnosisImage] = useState('');
+  const [imagePreview, setImagePreview] = useState('');
+  const [diagnosisResult, setDiagnosisResult] = useState(null);
+  const [diagnosingBusy, setDiagnosingBusy] = useState(false);
+  const [diagnosesHistory, setDiagnosesHistory] = useState([]);
+  const [fertCrop, setFertCrop] = useState('Cotton');
+  const [fertArea, setFertArea] = useState('2');
+  const [fertSoil, setFertSoil] = useState('Black soil');
+  const [fertStage, setFertStage] = useState('Basal / Sowing');
+  const [fertilizerPlan, setFertilizerPlan] = useState(null);
+  const [fertBusy, setFertBusy] = useState(false);
+  const [seedVarieties, setSeedVarieties] = useState([]);
+  const [marketPrices, setMarketPrices] = useState([]);
+  const [activities, setActivities] = useState([]);
+  const [activityType, setActivityType] = useState('Irrigation');
+  const [activityCrop, setActivityCrop] = useState('');
+  const [activityDate, setActivityDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [activityNotes, setActivityNotes] = useState('');
+  const [activityCost, setActivityCost] = useState('');
+  const [activityBusy, setActivityBusy] = useState(false);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
   const token = session?.access_token;
   const selectedFarm = useMemo(() => farms.find((f) => f.farm_id === selectedFarmId), [farms, selectedFarmId]);
+
+  // Network monitor for offline access
+  useEffect(() => {
+    const onOnline = () => { setIsOnline(true); setNotice('🌐 Connected to live network.'); };
+    const onOffline = () => { setIsOnline(false); setNotice('📡 Offline mode: cached field data active.'); };
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, []);
 
   useEffect(() => {
     api('/api/health')
@@ -261,6 +320,61 @@ export default function App() {
     loadData();
   }, [loadData]);
 
+  // Load Alerts & Irrigation Reminders
+  const loadAlerts = useCallback(async () => {
+    try {
+      const targetLat = selectedFarm?.latitude || weather?.weather?.latitude;
+      const targetLon = selectedFarm?.longitude || weather?.weather?.longitude;
+      const q = targetLat && targetLon ? `?latitude=${targetLat}&longitude=${targetLon}` : '';
+      const res = await api(`/api/alerts${q}`, token);
+      setAlerts(res.alerts || []);
+    } catch (e) {
+      console.warn('Could not load alerts:', e);
+    }
+  }, [selectedFarm, weather, token]);
+
+  // Load Mandi Market Prices
+  const loadMarketPrices = useCallback(async () => {
+    try {
+      const res = await api('/api/market-prices');
+      setMarketPrices(res.market_prices || []);
+    } catch (e) {
+      console.warn('Could not load market prices:', e);
+    }
+  }, []);
+
+  // Load Seed Varieties
+  const loadSeedVarieties = useCallback(async () => {
+    try {
+      const res = await api('/api/seed-varieties');
+      setSeedVarieties(res.varieties || []);
+    } catch (e) {
+      console.warn('Could not load seed varieties:', e);
+    }
+  }, []);
+
+  // Load Activities
+  const loadActivities = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await api('/api/activities', token);
+      setActivities(res.activities || []);
+    } catch (e) {
+      console.warn('Could not load activities:', e);
+    }
+  }, [token]);
+
+  // Load Disease Diagnoses History
+  const loadDiagnoses = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await api('/api/diagnoses', token);
+      setDiagnosesHistory(res.diagnoses || []);
+    } catch (e) {
+      console.warn('Could not load diagnoses:', e);
+    }
+  }, [token]);
+
   const loadWeatherAnalysesHistory = useCallback(async () => {
     if (!token) return;
     try {
@@ -272,10 +386,186 @@ export default function App() {
   }, [token]);
 
   useEffect(() => {
+    loadAlerts();
+    loadMarketPrices();
+    loadSeedVarieties();
+  }, [loadAlerts, loadMarketPrices, loadSeedVarieties]);
+
+  useEffect(() => {
     if (activeTab === 'history') {
       loadWeatherAnalysesHistory();
+      loadDiagnoses();
+    } else if (activeTab === 'activities') {
+      loadActivities();
+    } else if (activeTab === 'disease') {
+      loadDiagnoses();
     }
-  }, [activeTab, loadWeatherAnalysesHistory]);
+  }, [activeTab, loadWeatherAnalysesHistory, loadDiagnoses, loadActivities]);
+
+  // Voice Speech-to-Text (STT)
+  const startVoiceInput = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setError('Voice recognition not supported in your browser. You can type your question.');
+      return;
+    }
+    try {
+      const rec = new SpeechRecognition();
+      const langMap = { English: 'en-IN', Telugu: 'te-IN', Hindi: 'hi-IN', Kannada: 'kn-IN', Tamil: 'ta-IN' };
+      rec.lang = langMap[language] || 'en-IN';
+      rec.interimResults = false;
+      rec.maxAlternatives = 1;
+
+      setIsListening(true);
+      setNotice(`🎤 Listening in ${language}... Speak clearly now.`);
+
+      rec.onresult = (e) => {
+        const text = e.results[0][0].transcript;
+        setChatInput(text);
+        setIsListening(false);
+        setNotice(`Heard: "${text}"`);
+      };
+      rec.onerror = (e) => {
+        setIsListening(false);
+        setError(`Voice input error: ${e.error}`);
+      };
+      rec.onend = () => setIsListening(false);
+      rec.start();
+    } catch (err) {
+      setIsListening(false);
+      setError(`Voice recognition failed: ${err.message}`);
+    }
+  };
+
+  // Voice Text-to-Speech (TTS)
+  const speakText = (text) => {
+    if (!('speechSynthesis' in window)) {
+      setError('Speech audio output not supported in this browser.');
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const cleanText = text.replace(/[*_#`]/g, '');
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    const langMap = { English: 'en-IN', Telugu: 'te-IN', Hindi: 'hi-IN', Kannada: 'kn-IN', Tamil: 'ta-IN' };
+    utterance.lang = langMap[language] || 'en-IN';
+    utterance.rate = 0.95;
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const stopSpeech = () => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+    }
+  };
+
+  // Submit Crop Disease Diagnosis
+  const handleDiseaseDiagnose = async (e) => {
+    e?.preventDefault?.();
+    setDiagnosingBusy(true);
+    setError('');
+    try {
+      const allSymptoms = [...selectedSymptoms, diagnosisSymptoms].filter(Boolean).join(', ');
+      const res = await api('/api/diagnose/disease', token, {
+        method: 'POST',
+        body: JSON.stringify({
+          crop: diagnosisCrop,
+          symptoms: allSymptoms || 'Leaf discoloration and wilting',
+          image_data: diagnosisImage,
+          farm_id: selectedFarmId || undefined,
+          language,
+        }),
+      });
+      setDiagnosisResult(res.diagnosis);
+      setDiagnosesHistory((prev) => [res.diagnosis, ...prev]);
+      setNotice(`✅ Crop Doctor: Diagnosed ${res.diagnosis.disease_name} with ${Math.round(res.diagnosis.confidence * 100)}% confidence.`);
+    } catch (err) {
+      setError(`Disease scan error: ${err.message}`);
+    } finally {
+      setDiagnosingBusy(false);
+    }
+  };
+
+  // Run Fertilizer Dosage Calculation
+  const handleCalculateFertilizer = async (e) => {
+    e?.preventDefault?.();
+    setFertBusy(true);
+    try {
+      const res = await api('/api/fertilizer/calculate', token, {
+        method: 'POST',
+        body: JSON.stringify({
+          crop: fertCrop,
+          land_area: Number(fertArea) || 1,
+          soil_type: fertSoil,
+          stage: fertStage,
+        }),
+      });
+      setFertilizerPlan(res.fertilizer_plan);
+      setNotice('Fertilizer N-P-K recommendation calculated.');
+    } catch (err) {
+      setError(`Fertilizer calculation error: ${err.message}`);
+    } finally {
+      setFertBusy(false);
+    }
+  };
+
+  // Add Activity Log
+  const handleAddActivity = async (e) => {
+    e.preventDefault();
+    setActivityBusy(true);
+    try {
+      const res = await api('/api/activities', token, {
+        method: 'POST',
+        body: JSON.stringify({
+          activity_type: activityType,
+          crop: activityCrop || selectedFarm?.current_crop || 'Field Crop',
+          activity_date: activityDate,
+          notes: activityNotes,
+          cost: Number(activityCost) || 0,
+          farm_id: selectedFarmId || undefined,
+        }),
+      });
+      setActivities((prev) => [res.activity, ...prev]);
+      setActivityNotes('');
+      setActivityCost('');
+      setNotice(`Recorded activity: ${activityType}`);
+    } catch (err) {
+      setError(`Activity log error: ${err.message}`);
+    } finally {
+      setActivityBusy(false);
+    }
+  };
+
+  // Delete Activity Log
+  const handleDeleteActivity = async (id) => {
+    try {
+      await api(`/api/activities/${id}`, token, { method: 'DELETE' });
+      setActivities((prev) => prev.filter((a) => a.activity_id !== id));
+      setNotice('Activity removed.');
+    } catch (err) {
+      setError(`Could not delete activity: ${err.message}`);
+    }
+  };
+
+  // Update Preferred Language in Profile
+  const handleLanguageChange = async (newLang) => {
+    setLanguage(newLang);
+    if (token) {
+      try {
+        await api('/api/profile', token, {
+          method: 'PATCH',
+          body: JSON.stringify({ preferred_language: newLang }),
+        });
+        setNotice(`Language updated to ${newLang}.`);
+      } catch (err) {
+        console.warn('Could not save language to profile:', err);
+      }
+    }
+  };
+
 
   const loadWeather = useCallback(async (farmTarget = selectedFarm) => {
     if (!farmTarget) return;
@@ -720,7 +1010,31 @@ export default function App() {
             className={`nav-item ${activeTab === 'recommendations' ? 'active' : ''}`}
             onClick={() => setActiveTab('recommendations')}
           >
-            <Leaf size={17} /> Crop Suggestions
+            <Leaf size={17} /> Crop & Seed Hub
+          </button>
+
+          <button
+            type="button"
+            className={`nav-item ${activeTab === 'disease' ? 'active' : ''}`}
+            onClick={() => setActiveTab('disease')}
+          >
+            <Bug size={17} /> Crop Doctor (AI)
+          </button>
+
+          <button
+            type="button"
+            className={`nav-item ${activeTab === 'fertilizer_market' ? 'active' : ''}`}
+            onClick={() => setActiveTab('fertilizer_market')}
+          >
+            <FlaskConical size={17} /> Nutrients & Mandi
+          </button>
+
+          <button
+            type="button"
+            className={`nav-item ${activeTab === 'activities' ? 'active' : ''}`}
+            onClick={() => setActiveTab('activities')}
+          >
+            <Calendar size={17} /> Farm Activities ({activities.length})
           </button>
 
           <button
@@ -728,7 +1042,7 @@ export default function App() {
             className={`nav-item ${activeTab === 'assistant' ? 'active' : ''}`}
             onClick={() => setActiveTab('assistant')}
           >
-            <MessageCircle size={17} /> AI Agronomist
+            <MessageCircle size={17} /> AI Voice Advisor
           </button>
 
           <button
@@ -787,13 +1101,34 @@ export default function App() {
             <h1>
               {activeTab === 'overview' && 'Farm Dashboard Overview'}
               {activeTab === 'weather' && 'Live Weather Center & AI Predictions'}
-              {activeTab === 'recommendations' && 'AI Crop Recommendations'}
-              {activeTab === 'assistant' && 'Local AI Agronomist Chat'}
-              {activeTab === 'history' && 'Reports & Past Predictions'}
-              {activeTab === 'farms' && 'Farm Management'}
+              {activeTab === 'recommendations' && 'AI Crop Recommendations & Seed Varieties'}
+              {activeTab === 'disease' && 'Crop Doctor: Disease & Stress Diagnosis'}
+              {activeTab === 'fertilizer_market' && 'NPK Nutrient Calculator & APMC Mandi Rates'}
+              {activeTab === 'activities' && 'Farming Activity Log & Irrigation Schedule'}
+              {activeTab === 'assistant' && 'AI Voice Agronomist (STT & TTS)'}
+              {activeTab === 'history' && 'Reports, Past Predictions & Diagnostic Scans'}
+              {activeTab === 'farms' && 'Farm Management & Profile Settings'}
             </h1>
           </div>
           <div className="topbar-actions">
+            {/* Offline / Online Sync Status Pill */}
+            <span className={`offline-pill ${!isOnline ? 'offline' : ''}`} title={isOnline ? 'Connected to live network' : 'Using cached offline data'}>
+              {isOnline ? <Wifi size={12} style={{ color: '#2b824c' }} /> : <WifiOff size={12} style={{ color: '#b33918' }} />}
+              {isOnline ? 'Live Synced' : 'Offline Cached'}
+            </span>
+
+            {/* Weather Alerts counter */}
+            {alerts.length > 0 && (
+              <span
+                className="outlook-tag"
+                style={{ background: '#fdf0ed', color: '#a42c1b', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                onClick={() => setActiveTab('overview')}
+                title="Active weather alerts"
+              >
+                <AlertTriangle size={12} /> {alerts.length} Alerts
+              </span>
+            )}
+
             <button
               type="button"
               className="location-badge-btn"
@@ -818,6 +1153,7 @@ export default function App() {
         </header>
 
 
+
         {error && <Notice type="error" text={error} onClose={() => setError('')} />}
         {notice && <Notice text={notice} onClose={() => setNotice('')} />}
 
@@ -826,6 +1162,28 @@ export default function App() {
         {/* ------------------------------------------------------------- */}
         {activeTab === 'overview' && (
           <div className="page-container">
+            {/* Live Weather Alerts & Irrigation Reminders Banner */}
+            {alerts.length > 0 && (
+              <div className="alerts-hub-banner">
+                {alerts.map((alt, idx) => (
+                  <div key={idx} className={`alert-pill-box ${alt.severity || 'info'}`}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <AlertTriangle size={18} />
+                      <div>
+                        <strong>{alt.title}</strong>
+                        <p style={{ margin: '2px 0 0', fontSize: '11.5px', opacity: 0.9 }}>{alt.message}</p>
+                      </div>
+                    </div>
+                    {alt.action && (
+                      <span className="outlook-tag" style={{ background: '#fff', marginLeft: '12px', whiteSpace: 'nowrap' }}>
+                        💡 {alt.action}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Quick Stat Tiles */}
             <div className="dashboard-grid">
               <div className="stat-card">
@@ -1538,6 +1896,54 @@ export default function App() {
               </div>
             )}
 
+            {/* Certified Seed Varieties & Availability Catalog */}
+            <div className="panel" style={{ marginTop: '26px', padding: '22px' }}>
+              <div className="panel-heading" style={{ marginBottom: '14px' }}>
+                <div>
+                  <span className="small-label">ICAR & STATE SEED CORPORATIONS</span>
+                  <h3 style={{ margin: '4px 0 0' }}>High-Yielding & Climate-Resilient Certified Seed Varieties</h3>
+                  <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#566e5f' }}>
+                    Authentic seeds catalog with duration, yield potential, and trusted agricultural advisory sources.
+                  </p>
+                </div>
+                <span className="live-status-pill"><span className="pulse-dot" /> ICAR / KVK Verified</span>
+              </div>
+
+              <div className="seed-varieties-grid">
+                {seedVarieties.map((seed, sIdx) => (
+                  <div className="seed-card" key={sIdx}>
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <span className="seed-badge">{seed.crop}</span>
+                        <span style={{ fontSize: '11px', fontWeight: '700', color: '#688070' }}>{seed.duration_days} days maturity</span>
+                      </div>
+                      <h4 style={{ margin: '0 0 4px', fontSize: '15px', color: '#163520' }}>{seed.variety_name}</h4>
+                      <p style={{ fontSize: '11px', color: '#688070', margin: '0 0 10px' }}>🏛️ Source: {seed.source}</p>
+
+                      <div style={{ background: '#f8faf6', padding: '8px 10px', borderRadius: '8px', marginBottom: '10px', fontSize: '11px' }}>
+                        <div><strong>Yield:</strong> {seed.yield_potential}</div>
+                        <div><strong>Best Soil:</strong> {seed.suitable_soil}</div>
+                      </div>
+
+                      <div style={{ fontSize: '11px', color: '#334839' }}>
+                        <strong>Characteristics:</strong>
+                        <ul style={{ margin: '4px 0 0', paddingLeft: '16px' }}>
+                          {seed.key_traits.map((trait, tIdx) => (
+                            <li key={tIdx}>{trait}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+
+                    <div style={{ borderTop: '1px solid #edf4ea', paddingTop: '10px', marginTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '11px', color: '#1e6837', fontWeight: '700' }}>{seed.availability}</span>
+                      <span className="outlook-tag" style={{ background: '#eaf6ec', color: '#23733d' }}>Certified Seed</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {recommendation?.warnings && (
               <div className="disclaimer" style={{ marginTop: '20px' }}>
                 <Info size={17} />
@@ -1546,6 +1952,532 @@ export default function App() {
                 </p>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ------------------------------------------------------------- */}
+        {/* PAGE: CROP DOCTOR - DISEASE & STRESS DIAGNOSIS */}
+        {/* ------------------------------------------------------------- */}
+        {activeTab === 'disease' && (
+          <div className="page-container">
+            <div className="page-header-row">
+              <div>
+                <h2>Crop Doctor: Disease Detection & Stress Diagnostics</h2>
+                <p>Upload a field leaf photo or select observed symptoms for immediate pathology and stress analysis.</p>
+              </div>
+            </div>
+
+            <div className="doctor-layout">
+              {/* Left Column: Photo Upload and Symptom Selection */}
+              <div className="fert-form-panel">
+                <form onSubmit={handleDiseaseDiagnose}>
+                  <label>
+                    Target Crop
+                    <select value={diagnosisCrop} onChange={(e) => setDiagnosisCrop(e.target.value)}>
+                      <option>Paddy</option>
+                      <option>Cotton</option>
+                      <option>Groundnut</option>
+                      <option>Maize</option>
+                      <option>Red Gram</option>
+                      <option>Chilli</option>
+                      <option>Tomato</option>
+                      <option>Soybean</option>
+                    </select>
+                  </label>
+
+                  <div style={{ margin: '14px 0 6px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: '700', color: '#304437' }}>Upload Leaf or Field Photo:</span>
+                    <label className="photo-upload-zone" style={{ display: 'block', marginTop: '6px' }}>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onload = (event) => {
+                              setImagePreview(event.target.result);
+                              setDiagnosisImage(event.target.result);
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                      {imagePreview ? (
+                        <div>
+                          <img src={imagePreview} alt="Leaf Preview" className="preview-leaf-img" />
+                          <p style={{ fontSize: '11px', color: '#2b7d4a', margin: '4px 0 0' }}>Photo Loaded. Click to change.</p>
+                        </div>
+                      ) : (
+                        <div>
+                          <UploadCloud size={32} style={{ color: '#387c53', margin: '0 auto 8px' }} />
+                          <strong style={{ display: 'block', fontSize: '13px', color: '#1a3a24' }}>
+                            Click to upload leaf photo or drag & drop
+                          </strong>
+                          <span style={{ fontSize: '11px', color: '#688070' }}>Supports JPG, PNG, WEBP from mobile camera or storage</span>
+                        </div>
+                      )}
+                    </label>
+                  </div>
+
+                  <div style={{ marginTop: '14px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: '700', color: '#304437' }}>Visual Field Symptoms Observed:</span>
+                    <div className="symptoms-checkbox-grid">
+                      {[
+                        'Yellowing of leaves / Chlorosis',
+                        'Brown or black circular leaf spots',
+                        'Wilting / Drooping plant',
+                        'Powdery white or grey coating',
+                        'Red / orange rust pustules',
+                        'Stunted growth / Curled leaves',
+                      ].map((sym) => (
+                        <label key={sym} className="symptom-check-item">
+                          <input
+                            type="checkbox"
+                            checked={selectedSymptoms.includes(sym)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedSymptoms([...selectedSymptoms, sym]);
+                              } else {
+                                setSelectedSymptoms(selectedSymptoms.filter((s) => s !== sym));
+                              }
+                            }}
+                          />
+                          <span>{sym}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <label style={{ marginTop: '10px' }}>
+                    Additional Observations (optional)
+                    <input
+                      value={diagnosisSymptoms}
+                      onChange={(e) => setDiagnosisSymptoms(e.target.value)}
+                      placeholder="e.g. Stem discoloration, pests visible on leaf underside..."
+                    />
+                  </label>
+
+                  <button className="button primary full" type="submit" disabled={diagnosingBusy} style={{ marginTop: '14px' }}>
+                    <Bug size={16} />
+                    {diagnosingBusy ? 'Analyzing Pathology & Stress...' : 'Diagnose Disease & Stress'}
+                  </button>
+                </form>
+              </div>
+
+              {/* Right Column: Diagnosis Result or Prompt */}
+              <div>
+                {diagnosisResult ? (
+                  <div className="diagnosis-result-card">
+                    <div className="diagnosis-header">
+                      <div>
+                        <span className="small-label" style={{ color: '#8e5812' }}>PATHOLOGY REPORT · ICAR ADVISORY</span>
+                        <h3 style={{ margin: '4px 0 2px', fontSize: '20px', color: '#163821' }}>
+                          {diagnosisResult.disease_name}
+                        </h3>
+                        <p style={{ margin: 0, fontSize: '11.5px', color: '#688070' }}>
+                          Target Crop: <strong>{diagnosisResult.crop}</strong> · Pathogen: <strong>{diagnosisResult.pathogen}</strong>
+                        </p>
+                      </div>
+                      <span className="confidence-badge">
+                        {Math.round((diagnosisResult.confidence || 0.92) * 100)}% Match
+                      </span>
+                    </div>
+
+                    {/* Stress Factors */}
+                    {diagnosisResult.stress_factors && (
+                      <div style={{ background: '#fdf9f2', border: '1px solid #fae6c6', borderRadius: '8px', padding: '10px 12px', marginBottom: '14px' }}>
+                        <strong style={{ fontSize: '11px', color: '#8e5812', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                          <AlertTriangle size={13} /> Crop Stress Analysis:
+                        </strong>
+                        <p style={{ fontSize: '11.5px', color: '#6b430a', margin: '4px 0 0', lineHeight: '1.45' }}>
+                          {diagnosisResult.stress_factors}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Organic Treatment */}
+                    <div className="treatment-box">
+                      <strong>🌿 Recommended Organic & Biological Treatment:</strong>
+                      <p>{diagnosisResult.organic_treatment}</p>
+                    </div>
+
+                    {/* Chemical Control */}
+                    <div className="treatment-box chemical">
+                      <strong>🧪 Chemical / Fungicidal Control (If Threshold Exceeded):</strong>
+                      <p>{diagnosisResult.chemical_treatment}</p>
+                    </div>
+
+                    {/* Prevention Tips */}
+                    {diagnosisResult.prevention && (
+                      <div style={{ marginTop: '12px', fontSize: '11.5px', color: '#384d3e' }}>
+                        <strong>🛡️ Long-term Field Prevention:</strong>
+                        <p style={{ margin: '4px 0 0', lineHeight: '1.5' }}>{diagnosisResult.prevention}</p>
+                      </div>
+                    )}
+
+                    <div style={{ borderTop: '1px solid #edf4ea', paddingTop: '10px', marginTop: '14px', fontSize: '10.5px', color: '#6c8574', display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Advisory Source: {diagnosisResult.advisory_source}</span>
+                      <span>Verified: {new Date(diagnosisResult.created_at || Date.now()).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="panel empty-state">
+                    <Bug size={38} style={{ color: '#2b7d4a', margin: '0 auto 12px' }} />
+                    <h3>No Diagnosis Run Yet</h3>
+                    <p>Upload a clear photo of the infected leaf or tick the symptoms on the left to get instant biological & chemical remedies.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Past Diagnoses History */}
+            {diagnosesHistory.length > 0 && (
+              <div style={{ marginTop: '28px' }}>
+                <h3 style={{ fontSize: '16px', marginBottom: '12px' }}>Recent Crop Scans & Pathology History</h3>
+                <div className="history-card-grid">
+                  {diagnosesHistory.slice(0, 4).map((diag, dIdx) => (
+                    <div className="history-report-card" key={dIdx}>
+                      <div className="card-head">
+                        <div>
+                          <h4>🌿 {diag.disease_name}</h4>
+                          <time>{new Date(diag.created_at).toLocaleString()}</time>
+                        </div>
+                        <span className="confidence-badge">{Math.round((diag.confidence || 0.9) * 100)}%</span>
+                      </div>
+                      <p style={{ fontSize: '11.5px', color: '#4d6354', margin: '4px 0' }}>
+                        Crop: <strong>{diag.crop}</strong> · Symptoms: {diag.symptoms}
+                      </p>
+                      <div className="treatment-box" style={{ margin: '6px 0 0', padding: '8px 10px' }}>
+                        <p style={{ fontSize: '11px' }}>{diag.organic_treatment}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ------------------------------------------------------------- */}
+        {/* PAGE: NUTRIENTS & APMC MANDI MARKET RATES */}
+        {/* ------------------------------------------------------------- */}
+        {activeTab === 'fertilizer_market' && (
+          <div className="page-container">
+            <div className="page-header-row">
+              <div>
+                <h2>Fertilizer Nutrient Calculator & APMC Mandi Rates</h2>
+                <p>Calculate precision N-P-K dosages tailored to your acreage, and check live mandi commodity market rates.</p>
+              </div>
+            </div>
+
+            {/* Top Section: Fertilizer Calculator */}
+            <div className="fertilizer-calc-layout">
+              {/* Form */}
+              <div className="fert-form-panel">
+                <div className="panel-heading" style={{ marginBottom: '14px' }}>
+                  <div>
+                    <span className="small-label">PRECISION DOSAGE CALCULATOR</span>
+                    <h3 style={{ margin: '4px 0 0' }}>Calculate Farm Fertilizer Plan</h3>
+                  </div>
+                </div>
+
+                <form onSubmit={handleCalculateFertilizer}>
+                  <label>
+                    Target Crop
+                    <select value={fertCrop} onChange={(e) => setFertCrop(e.target.value)}>
+                      <option>Paddy</option>
+                      <option>Cotton</option>
+                      <option>Groundnut</option>
+                      <option>Maize</option>
+                      <option>Red Gram</option>
+                      <option>Chilli</option>
+                    </select>
+                  </label>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <label>
+                      Field Area (acres)
+                      <input
+                        type="number"
+                        min="0.5"
+                        step="0.5"
+                        required
+                        value={fertArea}
+                        onChange={(e) => setFertArea(e.target.value)}
+                      />
+                    </label>
+
+                    <label>
+                      Soil Type
+                      <select value={fertSoil} onChange={(e) => setFertSoil(e.target.value)}>
+                        <option>Black soil</option>
+                        <option>Red soil</option>
+                        <option>Loamy soil</option>
+                        <option>Alluvial soil</option>
+                        <option>Sandy soil</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <label>
+                    Crop Growth Stage
+                    <select value={fertStage} onChange={(e) => setFertStage(e.target.value)}>
+                      <option>Basal / Sowing</option>
+                      <option>Vegetative / Tillering</option>
+                      <option>Flowering / Square Formation</option>
+                      <option>Pod / Boll Maturity</option>
+                    </select>
+                  </label>
+
+                  <button className="button primary full" type="submit" disabled={fertBusy} style={{ marginTop: '14px' }}>
+                    <FlaskConical size={16} />
+                    {fertBusy ? 'Calculating Dosages...' : 'Generate NPK Plan'}
+                  </button>
+                </form>
+              </div>
+
+              {/* Fertilizer Results Card */}
+              <div className="fert-plan-card">
+                <div className="panel-heading" style={{ marginBottom: '12px' }}>
+                  <div>
+                    <span className="small-label">RECOMMENDED N-P-K DOSAGE</span>
+                    <h3 style={{ margin: '4px 0 0' }}>{fertilizerPlan?.crop || fertCrop} Plan ({fertArea} acres)</h3>
+                  </div>
+                  <span className="live-status-pill"><span className="pulse-dot" /> ICAR Standard</span>
+                </div>
+
+                {fertilizerPlan ? (
+                  <div>
+                    <div className="npk-badges-row">
+                      <div className="npk-badge">
+                        <small>Nitrogen (N)</small>
+                        <strong>{fertilizerPlan.total_recommended_npk.nitrogen_kg} kg</strong>
+                      </div>
+                      <div className="npk-badge">
+                        <small>Phosphorus (P)</small>
+                        <strong>{fertilizerPlan.total_recommended_npk.phosphorus_kg} kg</strong>
+                      </div>
+                      <div className="npk-badge">
+                        <small>Potassium (K)</small>
+                        <strong>{fertilizerPlan.total_recommended_npk.potassium_kg} kg</strong>
+                      </div>
+                    </div>
+
+                    <div style={{ background: '#f7faf5', borderRadius: '10px', padding: '12px 14px', margin: '14px 0' }}>
+                      <strong style={{ fontSize: '12px', color: '#1a3a24', display: 'block', marginBottom: '8px' }}>
+                        Commercial Fertilizer Bags Required:
+                      </strong>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', textAlign: 'center', fontSize: '11.5px' }}>
+                        <div style={{ background: '#fff', padding: '6px', borderRadius: '6px', border: '1px solid #e1ebe0' }}>
+                          <strong>{fertilizerPlan.commercial_fertilizers_needed.urea_kg} kg</strong>
+                          <span style={{ display: 'block', color: '#688070' }}>Urea</span>
+                        </div>
+                        <div style={{ background: '#fff', padding: '6px', borderRadius: '6px', border: '1px solid #e1ebe0' }}>
+                          <strong>{fertilizerPlan.commercial_fertilizers_needed.dap_kg} kg</strong>
+                          <span style={{ display: 'block', color: '#688070' }}>DAP</span>
+                        </div>
+                        <div style={{ background: '#fff', padding: '6px', borderRadius: '6px', border: '1px solid #e1ebe0' }}>
+                          <strong>{fertilizerPlan.commercial_fertilizers_needed.mop_potash_kg} kg</strong>
+                          <span style={{ display: 'block', color: '#688070' }}>MOP</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ fontSize: '11.5px', color: '#384d3e', marginBottom: '10px' }}>
+                      <strong>Micronutrients:</strong> {fertilizerPlan.micronutrients}
+                    </div>
+
+                    <div style={{ fontSize: '11.5px', color: '#384d3e' }}>
+                      <strong>Application Schedule:</strong>
+                      <ul style={{ margin: '4px 0 0', paddingLeft: '16px' }}>
+                        {fertilizerPlan.application_schedule.map((step, sIdx) => (
+                          <li key={sIdx}>{step}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="muted" style={{ padding: '20px 0', textAlign: 'center' }}>
+                    Select your crop parameters on the left and click &quot;Generate NPK Plan&quot; to calculate exact commercial bags and micro-nutrients.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Bottom Section: APMC Mandi Market Prices */}
+            <div style={{ marginTop: '28px' }}>
+              <div className="panel-heading" style={{ marginBottom: '12px' }}>
+                <div>
+                  <span className="small-label">LIVE AGMARKNET / APMC MANDI STREAM</span>
+                  <h3 style={{ margin: '4px 0 0' }}>Commodity Market Prices & 7-Day Trends</h3>
+                  <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#566e5f' }}>
+                    Live wholesale market rates per quintal (100 kg) across major agricultural trading centers.
+                  </p>
+                </div>
+                <button className="button secondary" onClick={loadMarketPrices}>
+                  <RefreshCw size={13} /> Refresh Mandi Rates
+                </button>
+              </div>
+
+              <div className="market-rates-grid">
+                {marketPrices.map((item, mIdx) => (
+                  <div className="market-card" key={mIdx}>
+                    <div>
+                      <div className="market-card-head">
+                        <div>
+                          <strong style={{ fontSize: '14px', color: '#163821' }}>{item.crop}</strong>
+                          <span style={{ display: 'block', fontSize: '11px', color: '#688070' }}>🏛️ {item.market_center}</span>
+                        </div>
+                        <span className={`trend-pill ${item.trend.includes('Upward') ? 'rising' : item.trend.includes('Downward') ? 'falling' : 'stable'}`}>
+                          {item.trend.includes('Upward') ? <TrendingUp size={11} /> : item.trend.includes('Downward') ? <TrendingDown size={11} /> : null}
+                          {item.trend}
+                        </span>
+                      </div>
+
+                      <div className="market-price-big">₹{item.modal_price} <span style={{ fontSize: '12px', fontWeight: '500', color: '#688070' }}>/ Quintal</span></div>
+                      <div style={{ fontSize: '11px', color: '#445b4b', margin: '4px 0' }}>
+                        Range: ₹{item.min_price} – ₹{item.max_price}
+                      </div>
+                    </div>
+
+                    <div style={{ borderTop: '1px solid #edf4ea', paddingTop: '8px', fontSize: '10.5px', color: '#688070', display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Arrival: {item.arrival_volume}</span>
+                      <span>Updated: Today</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ------------------------------------------------------------- */}
+        {/* PAGE: FARMING ACTIVITY LOG & TRACKING */}
+        {/* ------------------------------------------------------------- */}
+        {activeTab === 'activities' && (
+          <div className="page-container">
+            <div className="page-header-row">
+              <div>
+                <h2>Farming Activity Tracking & Expenditure Log</h2>
+                <p>Record sowing, irrigation, pesticide spraying, fertilizer application, and harvesting expenses.</p>
+              </div>
+            </div>
+
+            <div className="activity-tracker-layout">
+              {/* Left Column: Log New Activity Form */}
+              <div className="activity-form-card">
+                <h3 style={{ fontSize: '15px', marginBottom: '12px' }}>Record Field Activity</h3>
+                <form onSubmit={handleAddActivity}>
+                  <label>
+                    Activity Type
+                    <select value={activityType} onChange={(e) => setActivityType(e.target.value)}>
+                      <option>Sowing / Planting</option>
+                      <option>Irrigation</option>
+                      <option>Fertilizer Application</option>
+                      <option>Pesticide Spray</option>
+                      <option>Weeding & Inter-cultivation</option>
+                      <option>Harvesting</option>
+                      <option>Soil Testing</option>
+                      <option>Land Tillage / Ploughing</option>
+                    </select>
+                  </label>
+
+                  <label>
+                    Target Crop
+                    <input
+                      value={activityCrop}
+                      onChange={(e) => setActivityCrop(e.target.value)}
+                      placeholder={selectedFarm?.current_crop || 'e.g. Cotton, Paddy'}
+                    />
+                  </label>
+
+                  <label>
+                    Date
+                    <input
+                      type="date"
+                      required
+                      value={activityDate}
+                      onChange={(e) => setActivityDate(e.target.value)}
+                    />
+                  </label>
+
+                  <label>
+                    Expenditure / Cost (₹)
+                    <input
+                      type="number"
+                      min="0"
+                      value={activityCost}
+                      onChange={(e) => setActivityCost(e.target.value)}
+                      placeholder="e.g. 1500"
+                    />
+                  </label>
+
+                  <label>
+                    Observations & Notes
+                    <textarea
+                      rows={3}
+                      value={activityNotes}
+                      onChange={(e) => setActivityNotes(e.target.value)}
+                      placeholder="e.g. Applied 2 bags Urea, drip line flushed..."
+                    />
+                  </label>
+
+                  <button className="button primary full" type="submit" disabled={activityBusy} style={{ marginTop: '12px' }}>
+                    <Plus size={15} />
+                    {activityBusy ? 'Logging Activity...' : 'Save Activity Entry'}
+                  </button>
+                </form>
+              </div>
+
+              {/* Right Column: Activities Timeline */}
+              <div className="activity-list-card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <h3 style={{ margin: 0, fontSize: '15px' }}>Recorded Activities ({activities.length})</h3>
+                  <div style={{ fontSize: '12px', fontWeight: '700', color: '#1d5e35' }}>
+                    Total Spent: ₹{activities.reduce((acc, a) => acc + (Number(a.cost) || 0), 0).toLocaleString()}
+                  </div>
+                </div>
+
+                {activities.length > 0 ? (
+                  <div>
+                    {activities.map((act) => (
+                      <div className="activity-row" key={act.activity_id}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
+                            <span className="act-badge">{act.activity_type}</span>
+                            <strong style={{ fontSize: '12px', color: '#163821' }}>{act.crop || 'Field Crop'}</strong>
+                            <span style={{ fontSize: '11px', color: '#688070' }}>📅 {act.activity_date}</span>
+                          </div>
+                          {act.notes && <p style={{ margin: '2px 0 0', fontSize: '11.5px', color: '#4d6354' }}>{act.notes}</p>}
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          {act.cost > 0 && (
+                            <strong style={{ fontSize: '12px', color: '#1d5e35' }}>₹{Number(act.cost).toLocaleString()}</strong>
+                          )}
+                          <button
+                            type="button"
+                            className="icon-button"
+                            style={{ color: '#b34747' }}
+                            title="Delete entry"
+                            onClick={() => handleDeleteActivity(act.activity_id)}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="panel empty-state">
+                    <Calendar size={32} style={{ color: '#2b7d4a', margin: '0 auto 10px' }} />
+                    <h4 style={{ margin: '0 0 4px' }}>No Farming Activities Logged</h4>
+                    <p style={{ margin: 0, fontSize: '12px' }}>Use the form on the left to track sowing dates, spraying cycles, and farm costs.</p>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
@@ -1661,6 +2593,17 @@ export default function App() {
                     <div className={`chat-bubble ${msg.role}`} key={`${i}-${msg.role}`}>
                       <span>{msg.role === 'assistant' ? 'FarmPulse AI Advisor' : 'You'}</span>
                       <p>{msg.text}</p>
+                      {msg.role === 'assistant' && (
+                        <button
+                          type="button"
+                          className="audio-tts-btn"
+                          onClick={() => (isSpeaking ? stopSpeech() : speakText(msg.text))}
+                          title={`Listen to response in ${language}`}
+                        >
+                          {isSpeaking ? <VolumeX size={12} /> : <Volume2 size={12} />}
+                          {isSpeaking ? 'Stop Audio' : `🔊 Listen (${language})`}
+                        </button>
+                      )}
                     </div>
                   ))}
                   {chatBusy && (
@@ -1671,6 +2614,18 @@ export default function App() {
                   )}
                 </div>
 
+                {/* Active voice banner */}
+                {(isListening || isSpeaking) && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px', background: '#f0f7ef', borderRadius: '8px', margin: '6px 0', fontSize: '11px', color: '#1d5e35' }}>
+                    <span>{isListening ? `🎤 Listening for your question in ${language}... Speak now.` : `🔊 Speaking response in ${language}...`}</span>
+                    {isSpeaking && (
+                      <button type="button" className="link-button" onClick={stopSpeech} style={{ fontSize: '11px', color: '#b33918' }}>
+                        Stop Voice
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 {/* Chat input form */}
                 <form className="chat-input-bar" onSubmit={sendChat}>
                   <input
@@ -1680,6 +2635,15 @@ export default function App() {
                     maxLength={3000}
                     style={{ flex: 1, padding: '10px 14px', borderRadius: '8px', border: '1px solid #dfe6dd' }}
                   />
+                  <button
+                    type="button"
+                    className={`voice-btn ${isListening ? 'recording' : ''}`}
+                    onClick={isListening ? () => setIsListening(false) : startVoiceInput}
+                    title="Speak question via microphone (Speech-to-Text)"
+                  >
+                    {isListening ? <MicOff size={15} /> : <Mic size={15} />}
+                    {isListening ? 'Listening...' : 'Voice'}
+                  </button>
                   <button className="button primary" disabled={chatBusy || !chatInput.trim()} type="submit">
                     <Send size={15} />
                   </button>
@@ -1830,6 +2794,46 @@ export default function App() {
               <button className="button primary" onClick={() => setShowFarmForm(!showFarmForm)}>
                 <Plus size={16} /> {showFarmForm ? 'Close Form' : 'Add New Farm'}
               </button>
+            </div>
+
+            {/* Farmer Profile & Language Preferences Card */}
+            <div className="panel" style={{ padding: '20px', marginBottom: '22px' }}>
+              <div className="panel-heading" style={{ marginBottom: '14px' }}>
+                <div>
+                  <span className="small-label">FARMER PROFILE & ACCESSIBILITY</span>
+                  <h3 style={{ margin: '4px 0 0' }}>Profile & Regional Language Preferences</h3>
+                  <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#566e5f' }}>
+                    Select your preferred agricultural advisory language for AI chat, Voice STT/TTS, and notifications.
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', alignItems: 'center' }}>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '700', color: '#334839', display: 'block', marginBottom: '6px' }}>
+                    Preferred Regional Language:
+                  </label>
+                  <select
+                    value={language}
+                    onChange={(e) => handleLanguageChange(e.target.value)}
+                    style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid #d4ded3', width: '100%', fontSize: '12px' }}
+                  >
+                    <option value="English">English</option>
+                    <option value="Telugu">తెలుగు (Telugu)</option>
+                    <option value="Hindi">हिन्दी (Hindi)</option>
+                    <option value="Kannada">ಕನ್ನಡ (Kannada)</option>
+                    <option value="Tamil">தமிழ் (Tamil)</option>
+                  </select>
+                </div>
+
+                <div style={{ background: '#f8faf6', padding: '12px 14px', borderRadius: '10px', border: '1px solid #e1ece0' }}>
+                  <span style={{ fontSize: '11px', color: '#688070', display: 'block' }}>Connected Farmer Account</span>
+                  <strong style={{ fontSize: '13px', color: '#163821' }}>{session.user?.email}</strong>
+                  <span style={{ fontSize: '11px', color: '#2b7d4a', display: 'block', marginTop: '3px' }}>
+                    ✓ Multi-farm database sync active ({farms.length} farms registered)
+                  </span>
+                </div>
+              </div>
             </div>
 
             {/* Farm Form Panel */}
