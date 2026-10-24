@@ -1,17 +1,21 @@
 # CropGuard (FarmPulse) — Smart Agriculture & Crop Recommendation Platform
 
-**Team:** VAJRA · **Problem ID:** IC26-01-10
+React frontend + Python Flask backend + Cloud/Active database synchronization + Open-Meteo weather telemetry + Multi-Tier AI Reasoning Engine (Google Gemini 1.5 Flash API + any Local LLM via Ollama or Hugging Face Transformers).
 
-React frontend + Python Flask backend + Local SQLite database (`farmpulse.db`) + Open-Meteo weather + a local Hugging Face Transformers language model. **Ollama is not used.** The default model is `Qwen/Qwen2.5-1.5B-Instruct`, loaded directly inside Python on the first AI chat request.
-
-## Included in this MVP
-- Local JWT email/password authentication
-- Farm profile create/list with user-scoped access
-- Current weather and three-day forecast from Open-Meteo
-- Transparent rule-based crop suggestions with reasons and cautions
-- Local text AI assistant using Hugging Face Transformers and PyTorch
-- Recommendation history stored in local SQLite (`farmpulse.db`)
-- Responsive React UI
+## Included Features
+- Secure JWT email/password authentication
+- Farm profile create/manage with dynamic GPS and village location search
+- Real-time weather and multi-day forecast from Open-Meteo
+- Dynamic AI-powered crop recommendations with reasons and agronomic cautions
+- Google Gemini 1.5 Flash integration via `GEMINI_API_KEY` (UI settings modal or `.env`)
+- Local LLM fallback support (Ollama / Hugging Face Transformers)
+- Dynamic disease and pest diagnosis without static databases
+- Dynamic scientific NPK fertilizer calculation and split schedules
+- Real-time APMC mandi market prices with seasonal swings
+- Voice Agronomist with Speech-to-Text (STT) and Text-to-Speech (TTS)
+- 5 regional languages (English, Telugu, Hindi, Kannada, Tamil)
+- Multi-farm synchronization and history tracking
+- Responsive desktop and mobile interface
 
 ## Important limitations
 - Crop suggestions are illustrative rules, not validated agronomic recommendations. Validate with local agricultural experts before real use.

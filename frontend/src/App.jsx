@@ -57,11 +57,13 @@ import {
 const apiBase = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 
 async function api(path, token, options = {}) {
+  const geminiKey = localStorage.getItem('farmpulse_gemini_key') || '';
   const response = await fetch(`${apiBase}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(geminiKey ? { 'X-Gemini-Key': geminiKey } : {}),
       ...(options.headers || {}),
     },
   });
@@ -262,6 +264,49 @@ export default function App() {
   const [activityCost, setActivityCost] = useState('');
   const [activityBusy, setActivityBusy] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [geminiKey, setGeminiKey] = useState(() => localStorage.getItem('farmpulse_gemini_key') || '');
+  const [showGeminiModal, setShowGeminiModal] = useState(false);
+  const [geminiInput, setGeminiInput] = useState('');
+  const [geminiTesting, setGeminiTesting] = useState(false);
+  const [geminiStatus, setGeminiStatus] = useState(null);
+
+  const handleSaveGeminiKey = async (keyToSave) => {
+    setGeminiTesting(true);
+    setError('');
+    try {
+      const trimmed = (keyToSave || '').trim();
+      const res = await api('/api/settings/gemini-key', token, {
+        method: 'POST',
+        body: JSON.stringify({ gemini_api_key: trimmed }),
+      });
+      if (res.gemini_active) {
+        localStorage.setItem('farmpulse_gemini_key', trimmed);
+        setGeminiKey(trimmed);
+        setGeminiStatus({ active: true, model: res.model, message: 'Google Gemini 1.5 Flash Connected & Verified!' });
+        setNotice('✨ Gemini 1.5 Flash connected & verified successfully!');
+        setShowGeminiModal(false);
+      } else {
+        localStorage.removeItem('farmpulse_gemini_key');
+        setGeminiKey('');
+        setGeminiStatus({ active: false, message: 'Key cleared. Switched to Local LLM / Dynamic Reasoning.' });
+        setNotice('Gemini key cleared. Now using Local LLM / Dynamic Agro-Reasoning.');
+        setShowGeminiModal(false);
+      }
+    } catch (e) {
+      setError(`Gemini Key error: ${e.message}`);
+    } finally {
+      setGeminiTesting(false);
+    }
+  };
+
+  useEffect(() => {
+    const saved = localStorage.getItem('farmpulse_gemini_key');
+    if (saved) {
+      api('/api/settings/ai-status', null, { headers: { 'X-Gemini-Key': saved } })
+        .then(setGeminiStatus)
+        .catch(() => {});
+    }
+  }, []);
 
   const token = session?.access_token;
   const selectedFarm = useMemo(() => farms.find((f) => f.farm_id === selectedFarmId), [farms, selectedFarmId]);
@@ -652,7 +697,7 @@ export default function App() {
       if (res.weather) {
         setWeather((prev) => ({ ...prev, weather: res.weather }));
       }
-      setNotice('Local AI Meteorological Analysis & Predictions generated successfully.');
+      setNotice('AI Meteorological Analysis & Predictions generated successfully.');
     } catch (e) {
       setError(`AI analysis error: ${e.message}`);
     } finally {
@@ -902,7 +947,7 @@ export default function App() {
             <h1>Real-time weather insights & tailored crop decisions.</h1>
             <p>
               Connect your field location dynamically via Open-Meteo weather API to receive hyper-local crop
-              suitability, 7-day outlooks, and local LLM agricultural predictions without static data.
+              suitability, 7-day outlooks, and AI-powered agricultural predictions without static data.
             </p>
             <div className="auth-points">
               <span>
@@ -912,11 +957,11 @@ export default function App() {
                 <CloudSun size={15} /> Real-Time Open-Meteo Weather
               </span>
               <span>
-                <Sparkles size={15} /> Local LLM Agronomic Reasoning
+                <Sparkles size={15} /> Generative AI & Meteorological Agronomy
               </span>
             </div>
           </div>
-          <div className="auth-foot">Team VAJRA · IC26-01-10 · Powered by Open-Meteo & Local PyTorch LLM</div>
+          <div className="auth-foot">FarmPulse Smart Agriculture · Dynamic Meteorological Telemetry & Agro-AI</div>
         </div>
 
         <div className="auth-panel">
@@ -925,7 +970,7 @@ export default function App() {
             <h2>{authMode === 'signup' ? 'Create farmer account' : 'Welcome back'}</h2>
             <p className="muted">
               {authMode === 'signup'
-                ? 'Sign up to monitor your fields with live weather data & local AI.'
+                ? 'Sign up to monitor your fields with live meteorological data & agro-AI.'
                 : 'Sign in to access your farm profiles and weather insights.'}
             </p>
 
@@ -1073,22 +1118,22 @@ export default function App() {
           <div className="connection">
             <Cpu size={16} className="heading-muted" />
             <div>
-              <strong>Local LLM Engine</strong>
-              <small>{health?.ai_model ? `${health.ai_model.split('/')[1] || health.ai_model}` : 'Local AI'}</small>
+              <strong>AI Reasoning Engine</strong>
+              <small>{geminiKey ? 'Google Gemini 1.5 Flash' : (health?.ai_model ? `${health.ai_model.split('/')[1] || health.ai_model}` : 'Local LLM / Agro-AI')}</small>
             </div>
           </div>
           <div className="connection">
-            <Database size={16} className="heading-muted" />
+            <ShieldCheck size={16} className="heading-muted" />
             <div>
-              <strong>Database</strong>
-              <small>SQLite (farmpulse.db)</small>
+              <strong>Farm Data Store</strong>
+              <small>Protected & Synced</small>
             </div>
           </div>
           <button className="nav-item logout" onClick={logout}>
             <LogOut size={17} /> Sign out
           </button>
           <div className="team-label">
-            TEAM VAJRA <span>IC26-01-10</span>
+            FARMPULSE <span>SMART AGRO</span>
           </div>
         </div>
       </aside>
@@ -1097,7 +1142,7 @@ export default function App() {
       <main className="main-content">
         <header className="topbar">
           <div className="topbar-title-block">
-            <div className="eyebrow">LOCAL LLM & REAL-TIME OPEN-METEO WEATHER</div>
+            <div className="eyebrow">INTELLIGENT AGRO-AI & REAL-TIME OPEN-METEO WEATHER</div>
             <h1>
               {activeTab === 'overview' && 'Farm Dashboard Overview'}
               {activeTab === 'weather' && 'Live Weather Center & AI Predictions'}
@@ -1111,6 +1156,19 @@ export default function App() {
             </h1>
           </div>
           <div className="topbar-actions">
+            {/* Gemini AI Status / Config Button */}
+            <button
+              className={`gemini-pill-btn ${geminiKey ? 'active' : ''}`}
+              onClick={() => {
+                setGeminiInput(geminiKey);
+                setShowGeminiModal(true);
+              }}
+              title={geminiKey ? 'Google Gemini 1.5 Flash Connected & Active' : 'Connect Gemini API Key'}
+            >
+              <Sparkles size={13} style={{ color: geminiKey ? '#8b5cf6' : '#ea580c' }} />
+              {geminiKey ? 'Gemini AI Active' : '⚙️ Connect Gemini AI'}
+            </button>
+
             {/* Offline / Online Sync Status Pill */}
             <span className={`offline-pill ${!isOnline ? 'offline' : ''}`} title={isOnline ? 'Connected to live network' : 'Using cached offline data'}>
               {isOnline ? <Wifi size={12} style={{ color: '#2b824c' }} /> : <WifiOff size={12} style={{ color: '#b33918' }} />}
@@ -1241,7 +1299,7 @@ export default function App() {
                 <div className="eyebrow light-eyebrow">FIELD INTELLIGENCE DASHBOARD</div>
                 <h2>Live Meteorological Telemetry & Agro-Decisions</h2>
                 <p>
-                  Your crops are actively monitored using real-time Open-Meteo satellite & radar feeds. Our local LLM
+                  Your crops are actively monitored using real-time Open-Meteo satellite & radar feeds. Our AI reasoning engine
                   evaluates micro-climate shifts, soil moisture, and pest risks dynamically.
                 </p>
                 <div className="banner-buttons">
@@ -1426,7 +1484,7 @@ export default function App() {
                   onClick={runWeatherAnalysis}
                 >
                   <Sparkles size={14} className={analyzingWeather ? 'spin' : ''} />
-                  {analyzingWeather ? 'Local LLM Reasoning...' : 'Run Local AI Predictions'}
+                  {analyzingWeather ? 'AI Engine Reasoning...' : 'Run AI Weather Predictions'}
                 </button>
               </div>
             </div>
@@ -1570,10 +1628,10 @@ export default function App() {
                   <div className="ai-trigger-card">
                     <div className="ai-trigger-copy">
                       <h3>
-                        <Sparkles size={18} /> Local LLM Meteorological Analysis & Agro-Predictions
+                        <Sparkles size={18} /> AI Meteorological Analysis & Agro-Predictions
                       </h3>
                       <p>
-                        Our local AI model ({health?.ai_model || 'Local Model'}) parses the real-time weather reports,
+                        Our AI reasoning engine ({geminiKey ? 'Gemini 1.5 Flash' : (health?.ai_model || 'Local Model')}) parses the real-time weather reports,
                         humidity, wind, and 7-day rainfall models to forecast disease hazards, irrigation schedules, and
                         spraying windows.
                       </p>
@@ -1584,7 +1642,7 @@ export default function App() {
                       onClick={runWeatherAnalysis}
                     >
                       <Sparkles size={15} className={analyzingWeather ? 'spin' : ''} />
-                      {analyzingWeather ? 'Synthesizing Predictions...' : 'Run Local LLM Analysis'}
+                      {analyzingWeather ? 'Synthesizing Predictions...' : 'Run AI Weather Analysis'}
                     </button>
                   </div>
 
@@ -1595,7 +1653,7 @@ export default function App() {
                           <ShieldCheck size={18} /> Real-Time Agro-Meteorological Evaluation
                         </h3>
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                          <span className="ai-badge">Local LLM Generated</span>
+                          <span className="ai-badge">{geminiKey ? 'Gemini 1.5 Flash' : 'AI Engine Generated'}</span>
                           <span className="tiny muted">{new Date(weatherAnalysis.analyzed_at).toLocaleTimeString()}</span>
                         </div>
                       </div>
@@ -1706,9 +1764,9 @@ export default function App() {
                   ) : (
                     <div className="panel" style={{ padding: '24px', textAlign: 'center', color: '#688070' }}>
                       <Sparkles size={28} style={{ margin: '0 auto 8px', color: '#2b7d4a' }} />
-                      <h4 style={{ margin: '0 0 6px', color: '#1a3323' }}>Ready for Local Meteorological Analysis</h4>
+                      <h4 style={{ margin: '0 0 6px', color: '#1a3323' }}>Ready for AI Meteorological Analysis</h4>
                       <p style={{ margin: '0 auto 16px', maxWidth: '420px', fontSize: '12px' }}>
-                        Click the button above to run our local AI reasoning engine on your live Open-Meteo weather
+                        Click the button above to run our AI reasoning engine on your live Open-Meteo weather
                         reports.
                       </p>
                       <button className="button primary" onClick={runWeatherAnalysis} disabled={analyzingWeather}>
@@ -1771,14 +1829,14 @@ export default function App() {
               </div>
             )}
 
-            {/* Local LLM Agronomic Synthesis Card */}
+            {/* AI Agronomic Synthesis Card */}
             {recommendation?.ai_summary && (
               <div className="ai-report-box" style={{ marginBottom: '18px' }}>
                 <div className="ai-report-header">
                   <h3 style={{ fontSize: '15px' }}>
-                    <Sprout size={17} /> Local AI Agronomist Sowing & Management Guidance
+                    <Sprout size={17} /> AI Agronomist Sowing & Management Guidance
                   </h3>
-                  <span className="ai-badge">Local LLM Generated</span>
+                  <span className="ai-badge">{geminiKey ? 'Gemini 1.5 Flash' : 'AI Engine Generated'}</span>
                 </div>
                 <p style={{ margin: 0, fontSize: '13px', lineHeight: '1.65', color: '#273e30' }}>
                   {recommendation.ai_summary}
@@ -2530,16 +2588,20 @@ export default function App() {
                 </div>
 
                 <div>
-                  <div className="context-section-title">LOCAL AI ENGINE STATUS</div>
+                  <div className="context-section-title">AI REASONING ENGINE</div>
                   <div className="context-tile" style={{ background: '#f0f7ef' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
                       <span className="status-dot online" />
-                      <strong style={{ margin: 0, color: '#205d37' }}>Local LLM Active</strong>
+                      <strong style={{ margin: 0, color: '#205d37' }}>
+                        {geminiKey ? 'Google Gemini 1.5 Flash' : (health?.ai_model_loaded ? 'Local LLM Active' : 'Intelligent Agronomist Active')}
+                      </strong>
                     </div>
                     <p style={{ fontSize: '10px' }}>
-                      Model: {health?.ai_model || 'Local Model'} ({health?.ai_device || 'CPU'})
+                      Engine: {geminiKey ? 'Gemini 1.5 Flash (Cloud API)' : (health?.ai_model || 'Local Model / Algorithmic Engine')}
                     </p>
-                    <p style={{ fontSize: '10px' }}>Provider: Hugging Face Transformers</p>
+                    <p style={{ fontSize: '10px' }}>
+                      Provider: {geminiKey ? 'Google Generative AI' : (health?.ai_model_loaded ? 'Hugging Face / Ollama' : 'Dynamic Agro-Reasoning')}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -2661,7 +2723,7 @@ export default function App() {
             <div className="page-header-row">
               <div>
                 <h2>Saved Reports & Prediction History</h2>
-                <p>Review past AI weather analyses, pest evaluations, and crop recommendations saved in SQLite.</p>
+                <p>Review past AI weather analyses, pest evaluations, and crop recommendations saved in your agricultural profile.</p>
               </div>
             </div>
 
@@ -2830,7 +2892,86 @@ export default function App() {
                   <span style={{ fontSize: '11px', color: '#688070', display: 'block' }}>Connected Farmer Account</span>
                   <strong style={{ fontSize: '13px', color: '#163821' }}>{session.user?.email}</strong>
                   <span style={{ fontSize: '11px', color: '#2b7d4a', display: 'block', marginTop: '3px' }}>
-                    ✓ Multi-farm database sync active ({farms.length} farms registered)
+                    ✓ Multi-farm synchronization active ({farms.length} farms registered)
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* AI Reasoning Engine & Google Gemini Settings Panel */}
+            <div className="panel ai-settings-card">
+              <div className="panel-heading" style={{ marginBottom: '14px' }}>
+                <div>
+                  <span className="small-label" style={{ color: '#7c3aed' }}>GENERATIVE AI & LOCAL LLM INTEGRATION</span>
+                  <h3 style={{ margin: '4px 0 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Sparkles size={18} style={{ color: '#8b5cf6' }} /> AI Engine & Google Gemini API Configuration
+                  </h3>
+                  <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#566e5f' }}>
+                    FarmPulse seamlessly supports <strong>Google Gemini 1.5 Flash</strong>, any <strong>Local LLM (Ollama / Hugging Face)</strong>, and dynamic agronomic reasoning.
+                  </p>
+                </div>
+                <span className={`gemini-pill-btn ${geminiKey ? 'active' : ''}`}>
+                  {geminiKey ? '✨ Gemini 1.5 Flash Active' : '🤖 Local LLM / Dynamic Mode'}
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', alignItems: 'center' }}>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '700', color: '#334839', display: 'block', marginBottom: '6px' }}>
+                    Google Gemini API Key:
+                  </label>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input
+                      type="password"
+                      value={geminiInput}
+                      onChange={(e) => setGeminiInput(e.target.value)}
+                      placeholder="AIzaSy... (Paste Gemini API Key)"
+                      style={{
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        border: '1px solid #d4ded3',
+                        flex: 1,
+                        fontSize: '12px',
+                        fontFamily: 'monospace'
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="button primary"
+                      disabled={geminiTesting}
+                      onClick={() => handleSaveGeminiKey(geminiInput)}
+                      style={{ whiteSpace: 'nowrap', padding: '0 16px', fontSize: '12px' }}
+                    >
+                      {geminiTesting ? 'Testing Key...' : 'Connect Key'}
+                    </button>
+                    {geminiKey && (
+                      <button
+                        type="button"
+                        className="button"
+                        onClick={() => {
+                          setGeminiInput('');
+                          handleSaveGeminiKey('');
+                        }}
+                        style={{ whiteSpace: 'nowrap', padding: '0 12px', fontSize: '12px', color: '#dc2626' }}
+                        title="Clear API key and use local LLM"
+                      >
+                        Disconnect
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ marginTop: '6px', fontSize: '11px', color: '#64748b' }}>
+                    Get a free API key at <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" style={{ color: '#7c3aed', textDecoration: 'underline' }}>Google AI Studio</a>. No credit card required.
+                  </div>
+                </div>
+
+                <div style={{ background: '#ffffff', padding: '14px', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                  <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>Current AI Execution Tier:</span>
+                  <strong style={{ fontSize: '13px', color: geminiKey ? '#6d28d9' : '#163821', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                    <span className="status-dot online" />
+                    {geminiKey ? 'Google Gemini 1.5 Flash (Cloud Generative AI)' : (health?.ai_model_loaded ? 'Local LLM (Hugging Face / Ollama)' : 'Dynamic Agronomic Reasoning Engine')}
+                  </strong>
+                  <span style={{ fontSize: '11px', color: '#059669', display: 'block', marginTop: '4px' }}>
+                    ✓ Dynamic Disease Diagnosis, NPK Calculator, & Weather Synthesis Active
                   </span>
                 </div>
               </div>
@@ -3067,9 +3208,88 @@ export default function App() {
 
         {/* FOOTER */}
         <footer className="page-footer">
-          <span>FarmPulse · Team VAJRA · IC26-01-10</span>
-          <span>Dynamic data powered by Open-Meteo Weather API & SQLite Local LLM Engine.</span>
+          <span>FarmPulse Smart Agriculture</span>
+          <span>Dynamic meteorological telemetry powered by Open-Meteo & Intelligent Agro-AI Engine.</span>
         </footer>
+
+        {/* GEMINI API CONFIGURATION MODAL */}
+        {showGeminiModal && (
+          <div className="gemini-modal-backdrop" onClick={() => setShowGeminiModal(false)}>
+            <div className="gemini-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="gemini-modal-header">
+                <div>
+                  <h3>
+                    <Sparkles size={20} style={{ color: '#8b5cf6' }} /> Google Gemini 1.5 Flash AI
+                  </h3>
+                  <p>
+                    Connect your Gemini API Key to enable cloud generative intelligence for hyper-accurate crop recommendations, disease pathology, and weather forecasting.
+                  </p>
+                </div>
+                <button className="gemini-modal-close" onClick={() => setShowGeminiModal(false)}>×</button>
+              </div>
+
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ fontSize: '12px', fontWeight: '700', color: '#1e293b', display: 'block', marginBottom: '6px' }}>
+                  Gemini API Key:
+                </label>
+                <input
+                  type="password"
+                  value={geminiInput}
+                  onChange={(e) => setGeminiInput(e.target.value)}
+                  placeholder="AIzaSy... (Paste your key here)"
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '13px',
+                    fontFamily: 'monospace'
+                  }}
+                />
+                <span style={{ fontSize: '11px', color: '#64748b', display: 'block', marginTop: '6px' }}>
+                  Don't have a key? Get one for free in 30 seconds at <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" style={{ color: '#7c3aed', fontWeight: 600, textDecoration: 'underline' }}>Google AI Studio</a>.
+                </span>
+              </div>
+
+              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '20px', fontSize: '11.5px', color: '#475569' }}>
+                <strong>Multi-Tier AI Architecture:</strong> If no Gemini key is provided, FarmPulse automatically falls back to your local LLM (Ollama / Hugging Face) or intelligent dynamic agronomic algorithms.
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                {geminiKey && (
+                  <button
+                    type="button"
+                    className="button"
+                    style={{ color: '#dc2626', borderColor: '#fca5a5' }}
+                    onClick={() => {
+                      setGeminiInput('');
+                      handleSaveGeminiKey('');
+                    }}
+                  >
+                    Clear Key (Use Local LLM)
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="button secondary"
+                  onClick={() => setShowGeminiModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="button primary"
+                  disabled={geminiTesting || !geminiInput.trim()}
+                  onClick={() => handleSaveGeminiKey(geminiInput)}
+                  style={{ background: '#7c3aed', borderColor: '#6d28d9' }}
+                >
+                  <Sparkles size={14} />
+                  {geminiTesting ? 'Verifying Key...' : 'Save & Verify Key'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
