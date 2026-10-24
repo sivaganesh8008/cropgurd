@@ -74,9 +74,22 @@ def init_db():
             created_at TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS weather_analyses (
+            analysis_id TEXT PRIMARY KEY,
+            user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+            farm_id TEXT REFERENCES farms(farm_id) ON DELETE CASCADE,
+            location TEXT NOT NULL DEFAULT '',
+            weather_summary TEXT NOT NULL DEFAULT '',
+            predictions TEXT NOT NULL DEFAULT '[]',
+            advisories TEXT NOT NULL DEFAULT '{}',
+            pest_risk TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL
+        );
+
         CREATE INDEX IF NOT EXISTS idx_farms_user ON farms(user_id);
         CREATE INDEX IF NOT EXISTS idx_recommendations_user ON recommendations(user_id, created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_chat_user ON chat_history(user_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_analyses_user ON weather_analyses(user_id, created_at DESC);
         """)
     conn.close()
 
